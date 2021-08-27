@@ -1,6 +1,6 @@
 [package]
 name = "hdf5-src"
-version = "0.7.1"  # !V
+version = "0.7.2"  # !V
 authors = ["Ivan Smirnov <i.s.smirnov@gmail.com>"]
 keywords = ["hdf5"]
 license-file = "ext/hdf5/COPYING"
@@ -10,20 +10,6 @@ homepage = "https://github.com/aldanor/hdf5-rust"
 description = "Build script for compiling HDF5 C library from source."
 edition = "2018"
 links = "hdf5src"
-exclude = [
-    "ext/hdf5/bin/**",
-    "ext/hdf5/c++/**",
-    "ext/hdf5/examples/**",
-    "ext/hdf5/fortran/**",
-    "ext/hdf5/java/**",
-    "ext/hdf5/release_docs/**",
-    "ext/hdf5/test/**",
-    "ext/hdf5/testpar/**",
-    "ext/hdf5/tools/**",
-    "ext/hdf5/hl/test/**",
-    "ext/hdf5/hl/tools/**",
-    "ext/hdf5/hl/examples/**",
-]
 
 [features]
 hl = []
