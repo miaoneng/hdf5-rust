@@ -7,6 +7,8 @@ fn feature_enabled(feature: &str) -> bool {
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     let mut cfg = cmake::Config::new("ext/hdf5");
+   
+    cfg.cflag("-static");
 
     // only build the static c library, disable everything else
     cfg.define("HDF5_NO_PACKAGES", "ON");
