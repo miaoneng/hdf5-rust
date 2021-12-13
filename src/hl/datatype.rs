@@ -128,7 +128,7 @@ pub enum ByteOrder {
     None,
 }
 
-#[cfg(hdf5_1_8_6)]
+#[cfg(feature = "1.8.6")]
 impl From<H5T_order_t> for ByteOrder {
     fn from(order: H5T_order_t) -> Self {
         match order {
@@ -141,7 +141,7 @@ impl From<H5T_order_t> for ByteOrder {
     }
 }
 
-#[cfg(not(hdf5_1_8_6))]
+#[cfg(not(feature = "1.8.6"))]
 impl From<H5T_order_t> for ByteOrder {
     fn from(order: H5T_order_t) -> Self {
         match order {
@@ -156,7 +156,7 @@ impl From<H5T_order_t> for ByteOrder {
 impl Datatype {
     /// Get the total size of the datatype in bytes.
     pub fn size(&self) -> usize {
-        h5call!(H5Tget_size(self.id())).unwrap_or(0) as usize
+        h5lock!(H5Tget_size(self.id())) as usize
     }
 
     /// Get the byte order of the datatype.
@@ -171,7 +171,6 @@ impl Datatype {
         let dst = dst.borrow();
         let mut cdata = H5T_cdata_t::default();
         h5lock!({
-            let _e = silence_errors();
             let noop = H5Tfind(*H5T_NATIVE_INT, *H5T_NATIVE_INT, &mut (&mut cdata as *mut _));
             if H5Tfind(self.id(), dst.id(), &mut (&mut cdata as *mut _)) == noop {
                 Some(Conversion::NoOp)
@@ -200,11 +199,13 @@ impl Datatype {
     pub(crate) fn ensure_convertible(&self, dst: &Self, required: Conversion) -> Result<()> {
         // TODO: more detailed error messages after Debug/Display are implemented for Datatype
         if let Some(conv) = self.conv_path(dst) {
-            if conv > required {
-                fail!("{} conversion path required; available: {} conversion", required, conv)
-            } else {
-                Ok(())
-            }
+            ensure!(
+                conv <= required,
+                "{} conversion path required; available: {} conversion",
+                required,
+                conv
+            );
+            Ok(())
         } else {
             fail!("no conversion paths found")
         }
@@ -215,7 +216,7 @@ impl Datatype {
 
         h5lock!({
             let id = self.id();
-            let size = h5try!(H5Tget_size(id)) as usize;
+            let size = H5Tget_size(id) as usize;
             match H5Tget_class(id) {
                 H5T_class_t::H5T_INTEGER => {
                     let signed = match H5Tget_sign(id) {
@@ -234,10 +235,10 @@ impl Datatype {
                     let mut members: Vec<EnumMember> = Vec::new();
                     for idx in 0..h5try!(H5Tget_nmembers(id)) as _ {
                         let mut value: u64 = 0;
-                        h5try!(H5Tget_member_value(id, idx, &mut value as *mut _ as *mut _));
+                        h5try!(H5Tget_member_value(id, idx, (&mut value as *mut u64).cast()));
                         let name = H5Tget_member_name(id, idx);
                         members.push(EnumMember { name: string_from_cstr(name), value });
-                        h5_free_memory(name as *mut _);
+                        h5_free_memory(name.cast());
                     }
                     let base_dt = Self::from_id(H5Tget_super(id))?;
                     let (size, signed) = match base_dt.to_descriptor()? {
@@ -259,7 +260,7 @@ impl Datatype {
                     let mut fields: Vec<CompoundField> = Vec::new();
                     for idx in 0..h5try!(H5Tget_nmembers(id)) as _ {
                         let name = H5Tget_member_name(id, idx);
-                        let offset = h5try!(H5Tget_member_offset(id, idx));
+                        let offset = H5Tget_member_offset(id, idx);
                         let ty = Self::from_id(h5try!(H5Tget_member_type(id, idx)))?;
                         fields.push(CompoundField {
                             name: string_from_cstr(name),
@@ -267,7 +268,7 @@ impl Datatype {
                             offset: offset as _,
                             index: idx as _,
                         });
-                        h5_free_memory(name as *mut _);
+                        h5_free_memory(name.cast());
                     }
                     Ok(TD::Compound(CompoundType { fields, size }))
                 }
@@ -345,13 +346,13 @@ impl Datatype {
                     let bool_id = h5try!(H5Tenum_create(*H5T_NATIVE_INT8));
                     h5try!(H5Tenum_insert(
                         bool_id,
-                        b"FALSE\0".as_ptr() as *const _,
-                        &0_i8 as *const _ as *const _
+                        b"FALSE\0".as_ptr().cast(),
+                        (&0_i8 as *const i8).cast()
                     ));
                     h5try!(H5Tenum_insert(
                         bool_id,
-                        b"TRUE\0".as_ptr() as *const _,
-                        &1_i8 as *const _ as *const _
+                        b"TRUE\0".as_ptr().cast(),
+                        (&1_i8 as *const i8).cast()
                     ));
                     Ok(bool_id)
                 }
@@ -363,7 +364,7 @@ impl Datatype {
                         h5try!(H5Tenum_insert(
                             enum_id,
                             name.as_ptr(),
-                            &member.value as *const _ as *const _
+                            (&member.value as *const u64).cast()
                         ));
                     }
                     Ok(enum_id)

@@ -5,25 +5,28 @@ use std::ops::Deref;
 
 use bitflags::bitflags;
 
-#[cfg(hdf5_1_10_1)]
+#[cfg(feature = "1.10.1")]
 use hdf5_sys::h5f::H5F_fspace_strategy_t;
 use hdf5_sys::h5o::{
     H5O_SHMESG_ALL_FLAG, H5O_SHMESG_ATTR_FLAG, H5O_SHMESG_DTYPE_FLAG, H5O_SHMESG_FILL_FLAG,
     H5O_SHMESG_NONE_FLAG, H5O_SHMESG_PLINE_FLAG, H5O_SHMESG_SDSPACE_FLAG,
 };
 use hdf5_sys::h5p::{
-    H5Pcreate, H5Pget_istore_k, H5Pget_shared_mesg_index, H5Pget_shared_mesg_nindexes,
-    H5Pget_shared_mesg_phase_change, H5Pget_sizes, H5Pget_sym_k, H5Pget_userblock, H5Pset_istore_k,
+    H5Pcreate, H5Pget_attr_creation_order, H5Pget_attr_phase_change, H5Pget_istore_k,
+    H5Pget_obj_track_times, H5Pget_shared_mesg_index, H5Pget_shared_mesg_nindexes,
+    H5Pget_shared_mesg_phase_change, H5Pget_sizes, H5Pget_sym_k, H5Pget_userblock,
+    H5Pset_attr_creation_order, H5Pset_attr_phase_change, H5Pset_istore_k, H5Pset_obj_track_times,
     H5Pset_shared_mesg_index, H5Pset_shared_mesg_nindexes, H5Pset_shared_mesg_phase_change,
     H5Pset_sym_k, H5Pset_userblock,
 };
-#[cfg(hdf5_1_10_1)]
+#[cfg(feature = "1.10.1")]
 use hdf5_sys::h5p::{
     H5Pget_file_space_page_size, H5Pget_file_space_strategy, H5Pset_file_space_page_size,
     H5Pset_file_space_strategy,
 };
 
 use crate::globals::H5P_FILE_CREATE;
+pub use crate::hl::plist::common::{AttrCreationOrder, AttrPhaseChange};
 use crate::internal_prelude::*;
 
 /// File creation properties.
@@ -54,20 +57,20 @@ impl ObjectClass for FileCreate {
 
 impl Debug for FileCreate {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let _e = silence_errors();
         let mut formatter = f.debug_struct("FileCreate");
-        formatter
-            .field("userblock", &self.userblock())
-            .field("sizes", &self.sizes())
-            .field("sym_k", &self.sym_k())
-            .field("istore_k", &self.istore_k())
-            .field("shared_mesg_phase_change", &self.shared_mesg_phase_change())
-            .field("shared_mesg_indexes", &self.shared_mesg_indexes());
-        #[cfg(hdf5_1_10_1)]
+        formatter.field("userblock", &self.userblock());
+        formatter.field("sizes", &self.sizes());
+        formatter.field("sym_k", &self.sym_k());
+        formatter.field("istore_k", &self.istore_k());
+        formatter.field("shared_mesg_phase_change", &self.shared_mesg_phase_change());
+        formatter.field("shared_mesg_indexes", &self.shared_mesg_indexes());
+        formatter.field("obj_track_times", &self.obj_track_times());
+        formatter.field("attr_phase_change", &self.attr_phase_change());
+        formatter.field("attr_creation_order", &self.attr_creation_order());
+        #[cfg(feature = "1.10.1")]
         {
-            formatter
-                .field("file_space_page_size", &self.file_space_page_size())
-                .field("file_space_strategy", &self.file_space_strategy());
+            formatter.field("file_space_page_size", &self.file_space_page_size());
+            formatter.field("file_space_strategy", &self.file_space_strategy());
         }
         formatter.finish()
     }
@@ -185,7 +188,7 @@ pub struct SharedMessageIndex {
 }
 
 /// File space handling strategy.
-#[cfg(hdf5_1_10_1)]
+#[cfg(feature = "1.10.1")]
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum FileSpaceStrategy {
     /// Mechanisms used: free-space managers, aggregators or embedded paged
@@ -204,7 +207,7 @@ pub enum FileSpaceStrategy {
     None,
 }
 
-#[cfg(hdf5_1_10_1)]
+#[cfg(feature = "1.10.1")]
 impl Default for FileSpaceStrategy {
     fn default() -> Self {
         Self::FreeSpaceManager { paged: false, persist: false, threshold: 1 }
@@ -219,9 +222,12 @@ pub struct FileCreateBuilder {
     istore_k: Option<u32>,
     shared_mesg_phase_change: Option<PhaseChangeInfo>,
     shared_mesg_indexes: Option<Vec<SharedMessageIndex>>,
-    #[cfg(hdf5_1_10_1)]
+    obj_track_times: Option<bool>,
+    attr_phase_change: Option<AttrPhaseChange>,
+    attr_creation_order: Option<AttrCreationOrder>,
+    #[cfg(feature = "1.10.1")]
     file_space_page_size: Option<u64>,
-    #[cfg(hdf5_1_10_1)]
+    #[cfg(feature = "1.10.1")]
     file_space_strategy: Option<FileSpaceStrategy>,
 }
 
@@ -241,7 +247,11 @@ impl FileCreateBuilder {
         let v = plist.get_shared_mesg_phase_change()?;
         builder.shared_mesg_phase_change(v.max_list, v.min_btree);
         builder.shared_mesg_indexes(&plist.get_shared_mesg_indexes()?);
-        #[cfg(hdf5_1_10_1)]
+        builder.obj_track_times(plist.get_obj_track_times()?);
+        let apc = plist.get_attr_phase_change()?;
+        builder.attr_phase_change(apc.max_compact, apc.min_dense);
+        builder.attr_creation_order(plist.get_attr_creation_order()?);
+        #[cfg(feature = "1.10.1")]
         {
             builder.file_space_page_size(plist.get_file_space_page_size()?);
             builder.file_space_strategy(plist.get_file_space_strategy()?);
@@ -305,7 +315,31 @@ impl FileCreateBuilder {
         self
     }
 
-    #[cfg(hdf5_1_10_1)]
+    /// Sets a property that governs the recording of times associated with an object.
+    ///
+    /// If true, time data will be recorded; if false, time data will not be recorded.
+    pub fn obj_track_times(&mut self, track_times: bool) -> &mut Self {
+        self.obj_track_times = Some(track_times);
+        self
+    }
+
+    /// Sets attribute storage phase change thresholds.
+    ///
+    /// For further details, see [`AttrPhaseChange`](enum.AttrPhaseChange.html).
+    pub fn attr_phase_change(&mut self, max_compact: u32, min_dense: u32) -> &mut Self {
+        self.attr_phase_change = Some(AttrPhaseChange { max_compact, min_dense });
+        self
+    }
+
+    /// Sets flags for tracking and indexing attribute creation order.
+    ///
+    /// For further details, see [`AttrCreationOrder`](struct.AttrCreationOrder.html).
+    pub fn attr_creation_order(&mut self, attr_creation_order: AttrCreationOrder) -> &mut Self {
+        self.attr_creation_order = Some(attr_creation_order);
+        self
+    }
+
+    #[cfg(feature = "1.10.1")]
     /// Sets the file space page size.
     ///
     /// The minimum size is 512. Setting a value less than 512 will result in
@@ -316,7 +350,7 @@ impl FileCreateBuilder {
         self
     }
 
-    #[cfg(hdf5_1_10_1)]
+    #[cfg(feature = "1.10.1")]
     /// Sets the file space handling strategy and persisting free-space values.
     ///
     /// This setting cannot be changed for the life of the file.
@@ -351,7 +385,16 @@ impl FileCreateBuilder {
                 ));
             }
         }
-        #[cfg(hdf5_1_10_1)]
+        if let Some(v) = self.obj_track_times {
+            h5try!(H5Pset_obj_track_times(id, v as _));
+        }
+        if let Some(v) = self.attr_phase_change {
+            h5try!(H5Pset_attr_phase_change(id, v.max_compact as _, v.min_dense as _));
+        }
+        if let Some(v) = self.attr_creation_order {
+            h5try!(H5Pset_attr_creation_order(id, v.bits() as _));
+        }
+        #[cfg(feature = "1.10.1")]
         {
             if let Some(v) = self.file_space_page_size {
                 h5try!(H5Pset_file_space_page_size(id, v as _));
@@ -369,7 +412,9 @@ impl FileCreateBuilder {
                     FileSpaceStrategy::PageAggregation => {
                         (H5F_fspace_strategy_t::H5F_FSPACE_STRATEGY_AGGR, 0, 0)
                     }
-                    _ => (H5F_fspace_strategy_t::H5F_FSPACE_STRATEGY_NONE, 0, 0),
+                    FileSpaceStrategy::None => {
+                        (H5F_fspace_strategy_t::H5F_FSPACE_STRATEGY_NONE, 0, 0)
+                    }
                 };
                 h5try!(H5Pset_file_space_strategy(id, strategy, persist, threshold));
             }
@@ -377,11 +422,14 @@ impl FileCreateBuilder {
         Ok(())
     }
 
+    pub fn apply(&self, plist: &mut FileCreate) -> Result<()> {
+        h5lock!(self.populate_plist(plist.id()))
+    }
+
     pub fn finish(&self) -> Result<FileCreate> {
         h5lock!({
-            let plist = FileCreate::try_new()?;
-            self.populate_plist(plist.id())?;
-            Ok(plist)
+            let mut plist = FileCreate::try_new()?;
+            self.apply(&mut plist).map(|_| plist)
         })
     }
 }
@@ -393,7 +441,7 @@ impl FileCreate {
     }
 
     pub fn copy(&self) -> Self {
-        unsafe { self.deref().copy().cast() }
+        unsafe { self.deref().copy().cast_unchecked() }
     }
 
     pub fn build() -> FileCreateBuilder {
@@ -450,13 +498,13 @@ impl FileCreate {
     }
 
     #[doc(hidden)]
-    #[cfg(hdf5_1_10_1)]
+    #[cfg(feature = "1.10.1")]
     pub fn get_file_space_page_size(&self) -> Result<u64> {
         h5get!(H5Pget_file_space_page_size(self.id()): hsize_t).map(|x| x as _)
     }
 
     #[doc(hidden)]
-    #[cfg(hdf5_1_10_1)]
+    #[cfg(feature = "1.10.1")]
     pub fn get_file_space_strategy(&self) -> Result<FileSpaceStrategy> {
         let (strategy, persist, threshold) =
             h5get!(H5Pget_file_space_strategy(self.id()): H5F_fspace_strategy_t, hbool_t, hsize_t)?;
@@ -511,14 +559,46 @@ impl FileCreate {
         self.get_shared_mesg_indexes().unwrap_or_else(|_| Vec::new())
     }
 
+    #[doc(hidden)]
+    pub fn get_obj_track_times(&self) -> Result<bool> {
+        h5get!(H5Pget_obj_track_times(self.id()): hbool_t).map(|x| x > 0)
+    }
+
+    /// Returns true if the time data is recorded.
+    pub fn obj_track_times(&self) -> bool {
+        self.get_obj_track_times().unwrap_or(true)
+    }
+
+    #[doc(hidden)]
+    pub fn get_attr_phase_change(&self) -> Result<AttrPhaseChange> {
+        h5get!(H5Pget_attr_phase_change(self.id()): c_uint, c_uint)
+            .map(|(mc, md)| AttrPhaseChange { max_compact: mc as _, min_dense: md as _ })
+    }
+
+    /// Returns attribute storage phase change thresholds.
+    pub fn attr_phase_change(&self) -> AttrPhaseChange {
+        self.get_attr_phase_change().unwrap_or_default()
+    }
+
+    #[doc(hidden)]
+    pub fn get_attr_creation_order(&self) -> Result<AttrCreationOrder> {
+        h5get!(H5Pget_attr_creation_order(self.id()): c_uint)
+            .map(AttrCreationOrder::from_bits_truncate)
+    }
+
+    /// Returns flags for tracking and indexing attribute creation order.
+    pub fn attr_creation_order(&self) -> AttrCreationOrder {
+        self.get_attr_creation_order().unwrap_or_default()
+    }
+
     /// Retrieves the file space page size.
-    #[cfg(hdf5_1_10_1)]
+    #[cfg(feature = "1.10.1")]
     pub fn file_space_page_size(&self) -> u64 {
         self.get_file_space_page_size().unwrap_or(0)
     }
 
     /// Retrieves the file space handling strategy.
-    #[cfg(hdf5_1_10_1)]
+    #[cfg(feature = "1.10.1")]
     pub fn file_space_strategy(&self) -> FileSpaceStrategy {
         self.get_file_space_strategy().unwrap_or_else(|_| FileSpaceStrategy::default())
     }

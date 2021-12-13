@@ -5,88 +5,6 @@ use std::ops::Deref;
 use std::ptr;
 use std::slice;
 
-/* This trait is borrowed from arrayvec::Array (C) @bluss */
-pub unsafe trait Array: 'static {
-    type Item;
-
-    fn as_ptr(&self) -> *const Self::Item;
-    fn as_mut_ptr(&mut self) -> *mut Self::Item;
-    fn capacity() -> usize;
-}
-
-#[cfg(not(feature = "const_generics"))]
-mod impl_array {
-    use super::*;
-
-    macro_rules! impl_array {
-        () => ();
-
-        ($n:expr, $($ns:expr,)*) => (
-            unsafe impl<T: 'static> Array for [T; $n] {
-                type Item = T;
-
-                #[inline(always)]
-                fn as_ptr(&self) -> *const T {
-                    self as *const _ as *const _
-                }
-
-                #[inline(always)]
-                fn as_mut_ptr(&mut self) -> *mut T {
-                    self as *mut _ as *mut _
-                }
-
-                #[inline(always)]
-                fn capacity() -> usize {
-                    $n
-                }
-            }
-
-            impl_array!($($ns,)*);
-        );
-    }
-
-    impl_array!(
-        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
-        25, 26, 27, 28, 29, 30, 31,
-    );
-    impl_array!(
-        32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54,
-        55, 56, 57, 58, 59, 60, 61, 62, 63,
-    );
-    impl_array!(
-        64, 70, 72, 80, 90, 96, 100, 110, 120, 128, 130, 140, 150, 160, 170, 180, 190, 192, 200,
-        210, 220, 224, 230, 240, 250,
-    );
-    impl_array!(
-        256, 300, 365, 366, 384, 400, 500, 512, 600, 700, 768, 800, 900, 1000, 1024, 2048, 4096,
-        8192, 16384, 32768,
-    );
-}
-
-#[cfg(feature = "const_generics")]
-mod impl_array {
-    use super::*;
-
-    unsafe impl<T: 'static, const N: usize> Array for [T; N] {
-        type Item = T;
-
-        #[inline(always)]
-        fn as_ptr(&self) -> *const T {
-            self as *const _
-        }
-
-        #[inline(always)]
-        fn as_mut_ptr(&mut self) -> *mut T {
-            self as *mut _ as *mut _
-        }
-
-        #[inline(always)]
-        fn capacity() -> usize {
-            N
-        }
-    }
-}
-
 #[repr(C)]
 pub struct VarLenArray<T: Copy> {
     len: usize,
@@ -97,7 +15,7 @@ pub struct VarLenArray<T: Copy> {
 impl<T: Copy> VarLenArray<T> {
     pub unsafe fn from_parts(p: *const T, len: usize) -> VarLenArray<T> {
         let (len, ptr) = if !p.is_null() && len != 0 {
-            let dst = libc::malloc(len * mem::size_of::<T>());
+            let dst = crate::malloc(len * mem::size_of::<T>());
             ptr::copy_nonoverlapping(p, dst as *mut _, len);
             (len, dst)
         } else {
@@ -136,7 +54,7 @@ impl<T: Copy> Drop for VarLenArray<T> {
     fn drop(&mut self) {
         if !self.ptr.is_null() {
             unsafe {
-                libc::free(self.ptr as *mut _);
+                crate::free(self.ptr as *mut _);
             }
             self.ptr = ptr::null();
             if self.len != 0 {
@@ -173,17 +91,17 @@ impl<'a, T: Copy> From<&'a [T]> for VarLenArray<T> {
     }
 }
 
-impl<T: Copy> Into<Vec<T>> for VarLenArray<T> {
+impl<T: Copy> From<VarLenArray<T>> for Vec<T> {
     #[inline]
-    fn into(self) -> Vec<T> {
-        self.iter().cloned().collect()
+    fn from(v: VarLenArray<T>) -> Self {
+        v.iter().cloned().collect()
     }
 }
 
-impl<T: Copy, A: Array<Item = T>> From<A> for VarLenArray<T> {
+impl<T: Copy, const N: usize> From<[T; N]> for VarLenArray<T> {
     #[inline]
-    fn from(arr: A) -> VarLenArray<T> {
-        unsafe { VarLenArray::from_parts(arr.as_ptr(), A::capacity()) }
+    fn from(arr: [T; N]) -> VarLenArray<T> {
+        unsafe { VarLenArray::from_parts(arr.as_ptr(), arr.len()) }
     }
 }
 
@@ -210,10 +128,10 @@ impl<T: Copy + PartialEq> PartialEq<[T]> for VarLenArray<T> {
     }
 }
 
-impl<T: Copy + PartialEq, A: Array<Item = T>> PartialEq<A> for VarLenArray<T> {
+impl<T: Copy + PartialEq, const N: usize> PartialEq<[T; N]> for VarLenArray<T> {
     #[inline]
-    fn eq(&self, other: &A) -> bool {
-        self.as_slice() == unsafe { slice::from_raw_parts(other.as_ptr(), A::capacity()) }
+    fn eq(&self, other: &[T; N]) -> bool {
+        self.as_slice() == other
     }
 }
 
@@ -226,18 +144,9 @@ impl<T: Copy + fmt::Debug> fmt::Debug for VarLenArray<T> {
 
 #[cfg(test)]
 pub mod tests {
-    use super::{Array, VarLenArray};
+    use super::VarLenArray;
 
     type S = VarLenArray<u16>;
-
-    #[test]
-    pub fn test_array_trait() {
-        type T = [u32; 256];
-        assert_eq!(<T as Array>::capacity(), 256);
-        let mut arr = [1, 2, 3];
-        assert_eq!(arr.as_ptr(), &arr[0] as *const _);
-        assert_eq!(arr.as_mut_ptr(), &mut arr[0] as *mut _);
-    }
 
     #[test]
     pub fn test_vla_empty_default() {

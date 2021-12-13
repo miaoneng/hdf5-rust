@@ -1,6 +1,11 @@
+//! Creating and manipulating dataspaces in which to store elements of a dataset
 pub use self::H5S_class_t::*;
 pub use self::H5S_sel_type::*;
 pub use self::H5S_seloper_t::*;
+#[cfg(not(feature = "1.12.0"))]
+pub use self::H5Sencode1 as H5Sencode;
+#[cfg(feature = "1.12.0")]
+pub use self::H5Sencode2 as H5Sencode;
 
 use crate::internal_prelude::*;
 
@@ -56,10 +61,13 @@ extern "C" {
     ) -> herr_t;
     pub fn H5Scopy(space_id: hid_t) -> hid_t;
     pub fn H5Sclose(space_id: hid_t) -> herr_t;
-    #[cfg_attr(hdf5_1_12_0, deprecated(note = "deprecated in HDF5 1.12.0, use H5Sencode2()"))]
-    #[cfg_attr(not(hdf5_1_12_0), link_name = "H5Sencode")]
+    #[cfg_attr(
+        feature = "1.12.0",
+        deprecated(note = "deprecated in HDF5 1.12.0, use H5Sencode2()")
+    )]
+    #[cfg_attr(not(feature = "1.12.0"), link_name = "H5Sencode")]
     pub fn H5Sencode1(obj_id: hid_t, buf: *mut c_void, nalloc: *mut size_t) -> herr_t;
-    #[cfg(hdf5_1_12_0)]
+    #[cfg(feature = "1.12.0")]
     pub fn H5Sencode2(
         obj_id: hid_t, buf: *mut c_void, nalloc: *mut size_t, fapl_id: hid_t,
     ) -> herr_t;
@@ -98,12 +106,7 @@ extern "C" {
     pub fn H5Sget_select_type(spaceid: hid_t) -> H5S_sel_type;
 }
 
-#[cfg(not(hdf5_1_12_0))]
-pub use self::H5Sencode1 as H5Sencode;
-#[cfg(hdf5_1_12_0)]
-pub use self::H5Sencode2 as H5Sencode;
-
-#[cfg(hdf5_1_10_0)]
+#[cfg(feature = "1.10.0")]
 extern "C" {
     pub fn H5Sis_regular_hyperslab(spaceid: hid_t) -> htri_t;
     pub fn H5Sget_regular_hyperslab(
@@ -112,7 +115,7 @@ extern "C" {
     ) -> htri_t;
 }
 
-#[cfg(hdf5_1_12_0)]
+#[cfg(any(feature = "1.12.0", feature = "1.10.7"))]
 extern "C" {
     pub fn H5Scombine_hyperslab(
         space_id: hid_t, op: H5S_seloper_t, start: *const hsize_t, stride: *const hsize_t,
@@ -120,12 +123,6 @@ extern "C" {
     ) -> hid_t;
     pub fn H5Scombine_select(space1_id: hid_t, op: H5S_seloper_t, space2_id: hid_t) -> hid_t;
     pub fn H5Smodify_select(space1_id: hid_t, op: H5S_seloper_t, space2_id: hid_t) -> herr_t;
-    pub fn H5Ssel_iter_close(sel_iter_id: hid_t) -> herr_t;
-    pub fn H5Ssel_iter_create(space_id: hid_t, elmt_size: size_t, flags: c_uint) -> hid_t;
-    pub fn H5Ssel_iter_get_seq_list(
-        sel_iter_id: hid_t, maxseq: size_t, maxbytes: size_t, nseq: *mut size_t,
-        nbytes: *mut size_t, off: *mut hsize_t, len: *mut size_t,
-    ) -> herr_t;
     pub fn H5Sselect_adjust(space_id: hid_t, offset: *const hssize_t) -> herr_t;
     pub fn H5Sselect_copy(dst_id: hid_t, src_id: hid_t) -> herr_t;
     pub fn H5Sselect_intersect_block(
@@ -135,4 +132,19 @@ extern "C" {
         src_space_id: hid_t, dst_space_id: hid_t, src_intersect_space_id: hid_t,
     ) -> hid_t;
     pub fn H5Sselect_shape_same(space1_id: hid_t, space2_id: hid_t) -> htri_t;
+}
+
+#[cfg(feature = "1.12.0")]
+extern "C" {
+    pub fn H5Ssel_iter_close(sel_iter_id: hid_t) -> herr_t;
+    pub fn H5Ssel_iter_create(space_id: hid_t, elmt_size: size_t, flags: c_uint) -> hid_t;
+    pub fn H5Ssel_iter_get_seq_list(
+        sel_iter_id: hid_t, maxseq: size_t, maxbytes: size_t, nseq: *mut size_t,
+        nbytes: *mut size_t, off: *mut hsize_t, len: *mut size_t,
+    ) -> herr_t;
+}
+
+#[cfg(feature = "1.12.1")]
+extern "C" {
+    pub fn H5Ssel_iter_reset(sel_iter_id: hid_t, space_id: hid_t) -> hid_t;
 }

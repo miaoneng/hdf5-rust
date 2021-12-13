@@ -1,9 +1,9 @@
+use std::convert::TryInto;
 use std::fmt::{self, Debug};
 use std::mem;
 use std::ops::Deref;
 
 use ndarray::{Array, Array1, Array2, ArrayD, ArrayView, ArrayView1};
-use ndarray::{SliceInfo, SliceOrIndex};
 
 use hdf5_sys::h5a::{H5Aget_space, H5Aget_storage_size, H5Aget_type, H5Aread, H5Awrite};
 use hdf5_sys::h5d::{H5Dget_space, H5Dget_storage_size, H5Dget_type, H5Dread, H5Dwrite};
@@ -46,14 +46,16 @@ impl<'a> Reader<'a> {
         let (obj_id, tp_id) = (self.obj.id(), mem_dtype.id());
 
         if self.obj.is_attr() {
-            h5try!(H5Aread(obj_id, tp_id, buf as *mut _));
+            h5try!(H5Aread(obj_id, tp_id, buf.cast()));
         } else {
             let fspace_id = fspace.map_or(H5S_ALL, |f| f.id());
             let mspace_id = mspace.map_or(H5S_ALL, |m| m.id());
             let xfer =
                 PropertyList::from_id(h5call!(H5Pcreate(*crate::globals::H5P_DATASET_XFER))?)?;
-            crate::hl::plist::set_vlen_manager_libc(xfer.id())?;
-            h5try!(H5Dread(obj_id, tp_id, mspace_id, fspace_id, xfer.id(), buf as *mut _));
+            if !hdf5_types::USING_H5_ALLOCATOR {
+                crate::hl::plist::set_vlen_manager_libc(xfer.id())?;
+            }
+            h5try!(H5Dread(obj_id, tp_id, mspace_id, fspace_id, xfer.id(), buf.cast()));
         }
         Ok(())
     }
@@ -63,80 +65,47 @@ impl<'a> Reader<'a> {
     /// the slice, after singleton dimensions are dropped.
     /// Use the multi-dimensional slice macro `s![]` from `ndarray` to conveniently create
     /// a multidimensional slice.
-    pub fn read_slice<T, S, D>(&self, slice: &SliceInfo<S, D>) -> Result<Array<T, D>>
+    pub fn read_slice<T, S, D>(&self, selection: S) -> Result<Array<T, D>>
     where
         T: H5Type,
-        S: AsRef<[SliceOrIndex]>,
+        S: TryInto<Selection>,
+        Error: From<S::Error>,
         D: ndarray::Dimension,
     {
-        ensure!(!self.obj.is_attr(), "slicing cannot be used on attribute datasets");
+        ensure!(!self.obj.is_attr(), "Slicing cannot be used on attribute datasets");
 
-        let shape = self.obj.get_shape()?;
+        let selection = selection.try_into()?;
+        let obj_space = self.obj.space()?;
 
-        let slice_s: &[SliceOrIndex] = slice.as_ref();
-        let slice_dim = slice_s.len();
-        if shape.ndim() != slice_dim {
-            let obj_ndim = shape.ndim();
+        let out_shape = selection.out_shape(&obj_space.shape())?;
+        let out_size: Ix = out_shape.iter().product();
+        let fspace = obj_space.select(selection)?;
+
+        if let Some(ndim) = D::NDIM {
+            let out_ndim = out_shape.len();
+            ensure!(ndim == out_ndim, "Selection ndim ({}) != array ndim ({})", out_ndim, ndim);
+        } else {
+            let fsize = fspace.selection_size();
             ensure!(
-                obj_ndim == slice_dim,
-                "slice dimension mismatch: dataset has {} dims, slice has {} dims",
-                obj_ndim,
-                slice_dim
+                out_size == fsize,
+                "Selected size mismatch: {} != {} (shouldn't happen)",
+                out_size,
+                fsize
             );
         }
 
-        if shape.ndim() == 0 {
-            // Check that return dimensionality is 0.
-            if let Some(ndim) = D::NDIM {
-                let obj_ndim = 0;
-                ensure!(
-                    obj_ndim == ndim,
-                    "ndim mismatch: slice outputs dims {}, output type dims {}",
-                    obj_ndim,
-                    ndim
-                );
-            }
-
-            // Fall back to a simple read for the scalar case
-            // Slicing has no effect
+        if out_size == 0 {
+            Ok(unsafe { Array::from_shape_vec_unchecked(out_shape, vec![]).into_dimensionality()? })
+        } else if obj_space.ndim() == 0 {
             self.read()
         } else {
-            let fspace = self.obj.space()?;
-            let out_shape = fspace.select_slice(slice)?;
-
-            // Remove dimensions from out_shape that were SliceOrIndex::Index in the slice
-            let reduced_shape: Vec<_> = slice_s
-                .iter()
-                .zip(out_shape.iter().cloned())
-                .filter_map(|(slc, sz)| match slc {
-                    SliceOrIndex::Index(_) => None,
-                    _ => Some(sz),
-                })
-                .collect();
-
-            // *Output* dimensionality must match the reduced shape,
-            // (i.e. dimensionality after singleton 'SliceOrIndex::Index'
-            // axes are dropped.
-            if let Some(ndim) = D::NDIM {
-                let obj_ndim = reduced_shape.len();
-                ensure!(
-                    obj_ndim == ndim,
-                    "ndim mismatch: slice outputs dims {}, output type dims {}",
-                    obj_ndim,
-                    ndim
-                );
-            }
-
-            let mspace = Dataspace::try_new(&out_shape, false)?;
-            let size = out_shape.iter().product();
-            let mut vec = Vec::with_capacity(size);
-
-            self.read_into_buf(vec.as_mut_ptr(), Some(&fspace), Some(&mspace))?;
+            let mspace = Dataspace::try_new(&out_shape)?;
+            let mut buf = Vec::with_capacity(out_size);
+            self.read_into_buf(buf.as_mut_ptr(), Some(&fspace), Some(&mspace))?;
             unsafe {
-                vec.set_len(size);
-            }
-
-            let arr = ArrayD::from_shape_vec(reduced_shape, vec)?;
+                buf.set_len(out_size);
+            };
+            let arr = ArrayD::from_shape_vec(out_shape, buf)?;
             Ok(arr.into_dimensionality()?)
         }
     }
@@ -177,12 +146,13 @@ impl<'a> Reader<'a> {
 
     /// Reads the given `slice` of the dataset into a 1-dimensional array.
     /// The slice must yield a 1-dimensional result.
-    pub fn read_slice_1d<T, S>(&self, slice: &SliceInfo<S, ndarray::Ix1>) -> Result<Array1<T>>
+    pub fn read_slice_1d<T, S>(&self, selection: S) -> Result<Array1<T>>
     where
         T: H5Type,
-        S: AsRef<[SliceOrIndex]>,
+        S: TryInto<Selection>,
+        Error: From<S::Error>,
     {
-        self.read_slice(slice)
+        self.read_slice(selection)
     }
 
     /// Reads a dataset/attribute into a 2-dimensional array.
@@ -194,12 +164,13 @@ impl<'a> Reader<'a> {
 
     /// Reads the given `slice` of the dataset into a 2-dimensional array.
     /// The slice must yield a 2-dimensional result.
-    pub fn read_slice_2d<T, S>(&self, slice: &SliceInfo<S, ndarray::Ix2>) -> Result<Array2<T>>
+    pub fn read_slice_2d<T, S>(&self, selection: S) -> Result<Array2<T>>
     where
         T: H5Type,
-        S: AsRef<[SliceOrIndex]>,
+        S: TryInto<Selection>,
+        Error: From<S::Error>,
     {
-        self.read_slice(slice)
+        self.read_slice(selection)
     }
 
     /// Reads a dataset/attribute into an array with dynamic number of dimensions.
@@ -251,11 +222,11 @@ impl<'a> Writer<'a> {
         let (obj_id, tp_id) = (self.obj.id(), mem_dtype.id());
 
         if self.obj.is_attr() {
-            h5try!(H5Awrite(obj_id, tp_id, buf as *const _));
+            h5try!(H5Awrite(obj_id, tp_id, buf.cast()));
         } else {
             let fspace_id = fspace.map_or(H5S_ALL, |f| f.id());
             let mspace_id = mspace.map_or(H5S_ALL, |m| m.id());
-            h5try!(H5Dwrite(obj_id, tp_id, mspace_id, fspace_id, H5P_DEFAULT, buf as *const _));
+            h5try!(H5Dwrite(obj_id, tp_id, mspace_id, fspace_id, H5P_DEFAULT, buf.cast()));
         }
         Ok(())
     }
@@ -265,68 +236,54 @@ impl<'a> Writer<'a> {
     /// If the array has a fixed number of dimensions, it must match the dimensionality of
     /// dataset. Use the multi-dimensional slice macro `s![]` from `ndarray` to conveniently create
     /// a multidimensional slice.
-    pub fn write_slice<'b, A, T, S, D>(&self, arr: A, slice: &SliceInfo<S, D>) -> Result<()>
+    pub fn write_slice<'b, A, T, S, D>(&self, arr: A, selection: S) -> Result<()>
     where
         A: Into<ArrayView<'b, T, D>>,
         T: H5Type,
-        S: AsRef<[SliceOrIndex]>,
+        S: TryInto<Selection>,
+        Error: From<S::Error>,
         D: ndarray::Dimension,
     {
-        ensure!(!self.obj.is_attr(), "slicing cannot be used on attribute datasets");
+        ensure!(!self.obj.is_attr(), "Slicing cannot be used on attribute datasets");
 
-        let shape = self.obj.get_shape()?;
-        let slice_s: &[SliceOrIndex] = slice.as_ref();
-        let slice_dim = slice_s.len();
-        if shape.ndim() != slice_dim {
-            let obj_ndim = shape.ndim();
+        let selection = selection.try_into()?;
+        let obj_space = self.obj.space()?;
+
+        let out_shape = selection.out_shape(&obj_space.shape())?;
+        let out_size: Ix = out_shape.iter().product();
+        let fspace = obj_space.select(selection)?;
+        let view = arr.into();
+
+        if let Some(ndim) = D::NDIM {
+            let out_ndim = out_shape.len();
+            ensure!(ndim == out_ndim, "Selection ndim ({}) != array ndim ({})", out_ndim, ndim);
+        } else {
+            let fsize = fspace.selection_size();
             ensure!(
-                obj_ndim == slice_dim,
-                "slice dimension mismatch: dataset has {} dims, slice has {} dims",
-                obj_ndim,
-                slice_dim
+                out_size == fsize,
+                "Selected size mismatch: {} != {} (shouldn't happen)",
+                out_size,
+                fsize
+            );
+            ensure!(
+                view.shape() == out_shape.as_slice(),
+                "Shape mismatch: memory ({:?}) != destination ({:?})",
+                view.shape(),
+                out_shape
             );
         }
 
-        if shape.ndim() == 0 {
-            // Fall back to a simple read for the scalar case
-            // Slicing has no effect
-            self.write(arr)
+        if out_size == 0 {
+            Ok(())
+        } else if obj_space.ndim() == 0 {
+            self.write(view)
         } else {
-            let fspace = self.obj.space()?;
-            let slice_shape = fspace.select_slice(slice)?;
-
-            let view = arr.into();
-            let data_shape = view.shape();
-
-            // Restore dimensions that are SliceOrIndex::Index in the slice.
-            let mut data_shape_hydrated = Vec::new();
-            let mut pos = 0;
-            for s in slice_s {
-                if let SliceOrIndex::Index(_) = s {
-                    data_shape_hydrated.push(1);
-                } else {
-                    data_shape_hydrated.push(data_shape[pos]);
-                    pos += 1;
-                }
-            }
-
-            let mspace = Dataspace::try_new(&slice_shape, false)?;
-
-            // FIXME - we can handle non-standard input arrays by creating a memory space
-            // that reflects the same slicing/ordering that this ArrayView represents.
-            // we could also convert the array into a standard layout, but this is probably expensive.
+            let mspace = Dataspace::try_new(view.shape())?;
+            // TODO: support strided arrays (C-ordering we have to require regardless)
             ensure!(
                 view.is_standard_layout(),
-                "input array is not in standard layout or is not contiguous"
+                "Input array is not in standard layout or non-contiguous"
             );
-
-            if slice_shape != data_shape_hydrated {
-                fail!(
-                    "shape mismatch when writing slice: memory = {:?}, destination = {:?}",
-                    data_shape_hydrated,
-                    slice_shape
-                );
-            }
 
             self.write_from_buf(view.as_ptr(), Some(&fspace), Some(&mspace))
         }
@@ -391,6 +348,7 @@ impl<'a> Writer<'a> {
 
 #[repr(transparent)]
 #[derive(Clone)]
+/// An object which can be read or written to.
 pub struct Container(Handle);
 
 impl ObjectClass for Container {
@@ -422,7 +380,7 @@ impl Deref for Container {
 
 impl Container {
     pub(crate) fn is_attr(&self) -> bool {
-        get_id_type(self.id()) == H5I_ATTR
+        self.handle().id_type() == H5I_ATTR
     }
 
     /// Creates a reader wrapper for this dataset/attribute, allowing to
@@ -457,12 +415,12 @@ impl Container {
 
     #[doc(hidden)]
     pub fn get_shape(&self) -> Result<Vec<Ix>> {
-        self.space().map(|s| s.dims())
+        self.space().map(|s| s.shape())
     }
 
     /// Returns the shape of the dataset/attribute.
     pub fn shape(&self) -> Vec<Ix> {
-        self.space().ok().map_or_else(Vec::new, |s| s.dims())
+        self.space().ok().map_or_else(Vec::new, |s| s.shape())
     }
 
     /// Returns the number of dimensions in the dataset/attribute.
@@ -472,12 +430,12 @@ impl Container {
 
     /// Returns the total number of elements in the dataset/attribute.
     pub fn size(&self) -> usize {
-        self.shape().size()
+        self.shape().iter().product()
     }
 
     /// Returns whether this dataset/attribute is a scalar.
     pub fn is_scalar(&self) -> bool {
-        self.ndim() == 0
+        self.space().ok().map_or(false, |s| s.is_scalar())
     }
 
     /// Returns the amount of file space required for the dataset/attribute. Note that this
@@ -512,12 +470,13 @@ impl Container {
 
     /// Reads the given `slice` of the dataset into a 1-dimensional array.
     /// The slice must yield a 1-dimensional result.
-    pub fn read_slice_1d<T, S>(&self, slice: &SliceInfo<S, ndarray::Ix1>) -> Result<Array1<T>>
+    pub fn read_slice_1d<T, S>(&self, selection: S) -> Result<Array1<T>>
     where
         T: H5Type,
-        S: AsRef<[SliceOrIndex]>,
+        S: TryInto<Selection>,
+        Error: From<S::Error>,
     {
-        self.as_reader().read_slice_1d(slice)
+        self.as_reader().read_slice_1d(selection)
     }
 
     /// Reads a dataset/attribute into a 2-dimensional array.
@@ -529,12 +488,13 @@ impl Container {
 
     /// Reads the given `slice` of the dataset into a 2-dimensional array.
     /// The slice must yield a 2-dimensional result.
-    pub fn read_slice_2d<T, S>(&self, slice: &SliceInfo<S, ndarray::Ix2>) -> Result<Array2<T>>
+    pub fn read_slice_2d<T, S>(&self, selection: S) -> Result<Array2<T>>
     where
         T: H5Type,
-        S: AsRef<[SliceOrIndex]>,
+        S: TryInto<Selection>,
+        Error: From<S::Error>,
     {
-        self.as_reader().read_slice_2d(slice)
+        self.as_reader().read_slice_2d(selection)
     }
 
     /// Reads a dataset/attribute into an array with dynamic number of dimensions.
@@ -547,13 +507,14 @@ impl Container {
     /// the slice, after singleton dimensions are dropped.
     /// Use the multi-dimensional slice macro `s![]` from `ndarray` to conveniently create
     /// a multidimensional slice.
-    pub fn read_slice<T, S, D>(&self, slice: &SliceInfo<S, D>) -> Result<Array<T, D>>
+    pub fn read_slice<T, S, D>(&self, selection: S) -> Result<Array<T, D>>
     where
         T: H5Type,
-        S: AsRef<[SliceOrIndex]>,
+        S: TryInto<Selection>,
+        Error: From<S::Error>,
         D: ndarray::Dimension,
     {
-        self.as_reader().read_slice(slice)
+        self.as_reader().read_slice(selection)
     }
 
     /// Reads a scalar dataset/attribute.
@@ -592,14 +553,15 @@ impl Container {
     /// If the array has a fixed number of dimensions, it must match the dimensionality of
     /// dataset. Use the multi-dimensional slice macro `s![]` from `ndarray` to conveniently create
     /// a multidimensional slice.
-    pub fn write_slice<'b, A, T, S, D>(&self, arr: A, slice: &SliceInfo<S, D>) -> Result<()>
+    pub fn write_slice<'b, A, T, S, D>(&self, arr: A, selection: S) -> Result<()>
     where
         A: Into<ArrayView<'b, T, D>>,
         T: H5Type,
-        S: AsRef<[SliceOrIndex]>,
+        S: TryInto<Selection>,
+        Error: From<S::Error>,
         D: ndarray::Dimension,
     {
-        self.as_writer().write_slice(arr, slice)
+        self.as_writer().write_slice(arr, selection)
     }
 
     /// Writes a scalar dataset/attribute.

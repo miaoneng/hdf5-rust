@@ -1,3 +1,6 @@
+// due to compiler wrongfully complaining re: Copy impl missing for packed struct
+#![allow(unaligned_references)]
+
 #[macro_use]
 extern crate hdf5_derive;
 
@@ -18,10 +21,10 @@ struct A {
 #[repr(C)]
 struct B {
     a: [A; 4],
-    b: FixedAscii<[u8; 8]>,
+    b: FixedAscii<8>,
     c: VarLenArray<f64>,
     d: bool,
-    e: FixedUnicode<[u8; 7]>,
+    e: FixedUnicode<7>,
     f: VarLenAscii,
     g: VarLenUnicode,
 }
@@ -29,6 +32,57 @@ struct B {
 #[derive(H5Type)]
 #[repr(C)]
 struct T(i64, pub u64);
+
+#[derive(H5Type, Copy, Clone)]
+#[repr(packed)]
+struct P1 {
+    x: u8,
+    y: u64,
+}
+
+#[derive(H5Type, Copy, Clone)]
+#[repr(packed)]
+struct P2(i8, u32);
+
+#[derive(H5Type)]
+#[repr(transparent)]
+struct T1 {
+    _x: u64,
+}
+
+#[derive(H5Type)]
+#[repr(transparent)]
+struct T2(i32);
+
+#[test]
+fn test_compound_packed() {
+    assert_eq!(
+        P1::type_descriptor(),
+        TD::Compound(CompoundType {
+            fields: vec![
+                CompoundField::typed::<u8>("x", 0, 0),
+                CompoundField::typed::<u64>("y", 1, 1),
+            ],
+            size: 9,
+        })
+    );
+    assert_eq!(
+        P2::type_descriptor(),
+        TD::Compound(CompoundType {
+            fields: vec![
+                CompoundField::typed::<i8>("0", 0, 0),
+                CompoundField::typed::<u32>("1", 1, 1),
+            ],
+            size: 5,
+        })
+    );
+}
+
+#[test]
+fn test_compound_transparent() {
+    assert_eq!(T1::type_descriptor(), u64::type_descriptor(),);
+    assert_eq!(T2::type_descriptor(), i32::type_descriptor(),);
+}
 
 #[test]
 fn test_compound_simple() {

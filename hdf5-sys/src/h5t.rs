@@ -1,3 +1,4 @@
+//! Creating and manipulating datatypes which describe elements of a dataset
 use std::mem;
 
 pub use self::H5T_bkg_t::*;
@@ -13,6 +14,10 @@ pub use self::H5T_pad_t::*;
 pub use self::H5T_pers_t::*;
 pub use self::H5T_sign_t::*;
 pub use self::H5T_str_t::*;
+pub use {
+    H5Tarray_create2 as H5Tarray_create, H5Tcommit2 as H5Tcommit,
+    H5Tget_array_dims2 as H5Tget_array_dims, H5Topen2 as H5Topen,
+};
 
 use crate::internal_prelude::*;
 
@@ -34,7 +39,7 @@ pub enum H5T_class_t {
     H5T_NCLASSES = 11,
 }
 
-#[cfg(hdf5_1_8_6)]
+#[cfg(feature = "1.8.6")]
 #[repr(C)]
 #[derive(Copy, Clone, PartialEq, PartialOrd, Debug)]
 pub enum H5T_order_t {
@@ -46,7 +51,7 @@ pub enum H5T_order_t {
     H5T_ORDER_NONE = 4,
 }
 
-#[cfg(not(hdf5_1_8_6))]
+#[cfg(not(feature = "1.8.6"))]
 #[repr(C)]
 #[derive(Copy, Clone, PartialEq, PartialOrd, Debug)]
 pub enum H5T_order_t {
@@ -332,6 +337,16 @@ extern "C" {
         src_id: hid_t, dst_id: hid_t, nelmts: size_t, buf: *mut c_void, background: *mut c_void,
         plist_id: hid_t,
     ) -> herr_t;
+    #[deprecated(note = "deprecated since HDF5 1.8.0, use H5Tcommit2")]
+    pub fn H5Tcommit1(loc_id: hid_t, name: *const c_char, type_id: hid_t) -> herr_t;
+    #[deprecated(note = "deprecated since HDF5 1.8.0, use H5Tcommit2")]
+    pub fn H5Topen1(loc_id: hid_t, name: *const c_char) -> hid_t;
+    #[deprecated(note = "deprecated since HDF5 1.8.0, use H5Tarray_create2")]
+    pub fn H5Tarray_create1(
+        base_id: hid_t, ndims: c_int, dim: *const hsize_t, perm: *const c_int,
+    ) -> hid_t;
+    #[deprecated(note = "deprecated since HDF5 1.8.0, use H5Tget_array_dims2")]
+    pub fn H5Tget_array_dims1(type_id: hid_t, dims: *mut hsize_t, perm: *mut c_int) -> c_int;
 }
 
 pub use self::globals::*;
@@ -426,7 +441,7 @@ mod globals {
     extern_static!(H5T_NATIVE_UINT_LEAST64, H5T_NATIVE_UINT_LEAST64_g);
     extern_static!(H5T_NATIVE_INT_FAST64, H5T_NATIVE_INT_FAST64_g);
     extern_static!(H5T_NATIVE_UINT_FAST64, H5T_NATIVE_UINT_FAST64_g);
-    #[cfg(hdf5_1_12_0)]
+    #[cfg(feature = "1.12.0")]
     extern_static!(H5T_STD_REF, H5T_STD_REF_g);
 }
 
@@ -521,17 +536,17 @@ mod globals {
     extern_static!(H5T_NATIVE_UINT_LEAST64, __imp_H5T_NATIVE_UINT_LEAST64_g);
     extern_static!(H5T_NATIVE_INT_FAST64, __imp_H5T_NATIVE_INT_FAST64_g);
     extern_static!(H5T_NATIVE_UINT_FAST64, __imp_H5T_NATIVE_UINT_FAST64_g);
-    #[cfg(hdf5_1_12_0)]
+    #[cfg(feature = "1.12.0")]
     extern_static!(H5T_STD_REF, __imp_H5T_STD_REF_g);
 }
 
-#[cfg(hdf5_1_10_0)]
+#[cfg(feature = "1.10.0")]
 extern "C" {
     pub fn H5Tflush(type_id: hid_t) -> herr_t;
     pub fn H5Trefresh(type_id: hid_t) -> herr_t;
 }
 
-#[cfg(hdf5_1_12_0)]
+#[cfg(feature = "1.12.0")]
 extern "C" {
     pub fn H5Treclaim(type_id: hid_t, space_id: hid_t, dxpl_id: hid_t, buf: *mut c_void) -> herr_t;
 }

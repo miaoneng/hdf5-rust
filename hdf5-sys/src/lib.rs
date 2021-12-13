@@ -1,7 +1,10 @@
+//! Rust bindings to the `hdf5` library for reading and writing data to and from storage
 #![allow(non_camel_case_types, non_snake_case, dead_code, deprecated)]
 #![cfg_attr(feature = "cargo-clippy", allow(clippy::unreadable_literal))]
 #![cfg_attr(feature = "cargo-clippy", allow(clippy::missing_safety_doc))]
 #![cfg_attr(feature = "cargo-clippy", allow(clippy::cognitive_complexity))]
+#![cfg_attr(feature = "cargo-clippy", allow(clippy::upper_case_acronyms))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 macro_rules! extern_static {
     ($dest:ident, $src:ident) => {
@@ -12,7 +15,7 @@ macro_rules! extern_static {
     };
 }
 
-#[cfg(all(feature = "mpio", not(h5_have_parallel)))]
+#[cfg(all(feature = "mpio", not(feature = "have-parallel")))]
 compile_error!("Enabling \"mpio\" feature requires HDF5 library built with MPI support");
 
 #[cfg(all(feature = "mpio", feature = "static"))]
@@ -38,7 +41,7 @@ pub mod h5t;
 pub mod h5vl;
 pub mod h5z;
 
-#[cfg(hdf5_1_8_15)]
+#[cfg(feature = "1.8.15")]
 pub mod h5pl;
 
 #[allow(non_camel_case_types)]

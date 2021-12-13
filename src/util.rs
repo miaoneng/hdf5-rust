@@ -1,10 +1,8 @@
 use std::borrow::Borrow;
+use std::convert::TryInto;
 use std::ffi::{CStr, CString};
 use std::ptr;
 use std::str;
-
-use num_integer::Integer;
-use num_traits::{cast, NumCast};
 
 use crate::internal_prelude::*;
 
@@ -35,20 +33,20 @@ pub fn string_to_fixed_bytes(s: &str, buf: &mut [c_char]) {
     }
     let bytes = s.as_bytes();
     unsafe {
-        ptr::copy_nonoverlapping(bytes.as_ptr(), buf.as_mut_ptr() as *mut _, bytes.len());
+        ptr::copy_nonoverlapping(bytes.as_ptr(), buf.as_mut_ptr().cast(), bytes.len());
     }
     for c in &mut buf[bytes.len()..] {
         *c = 0;
     }
 }
 
-#[cfg(hdf5_1_8_13)]
+#[cfg(feature = "1.8.13")]
 pub fn h5_free_memory(mem: *mut c_void) {
     use hdf5_sys::h5::H5free_memory;
     unsafe { H5free_memory(mem) };
 }
 
-#[cfg(not(hdf5_1_8_13))]
+#[cfg(not(feature = "1.8.13"))]
 pub fn h5_free_memory(mem: *mut c_void) {
     // this may fail in debug builds of HDF5
     use libc::free;
@@ -59,9 +57,9 @@ pub fn h5_free_memory(mem: *mut c_void) {
 pub fn get_h5_str<T, F>(func: F) -> Result<String>
 where
     F: Fn(*mut c_char, size_t) -> T,
-    T: Integer + NumCast,
+    T: TryInto<isize>,
 {
-    let len = 1 + cast::<T, isize>(func(ptr::null_mut(), 0)).unwrap();
+    let len = 1_isize + (func(ptr::null_mut(), 0)).try_into().unwrap_or(-1);
     ensure!(len > 0, "negative string length in get_h5_str()");
     if len == 1 {
         Ok("".to_owned())

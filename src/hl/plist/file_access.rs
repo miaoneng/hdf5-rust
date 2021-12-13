@@ -42,38 +42,38 @@ use hdf5_sys::h5p::{
     H5Pset_gc_references, H5Pset_mdc_config, H5Pset_meta_block_size, H5Pset_sieve_buf_size,
     H5Pset_small_data_block_size,
 };
-#[cfg(h5_have_direct)]
+#[cfg(feature = "have-direct")]
 use hdf5_sys::h5p::{H5Pget_fapl_direct, H5Pset_fapl_direct};
 #[cfg(feature = "mpio")]
 use hdf5_sys::h5p::{H5Pget_fapl_mpio, H5Pset_fapl_mpio};
 
-#[cfg(hdf5_1_10_1)]
+#[cfg(feature = "1.10.1")]
 use hdf5_sys::h5ac::{H5AC_cache_image_config_t, H5AC__CACHE_IMAGE__ENTRY_AGEOUT__NONE};
-#[cfg(hdf5_1_10_2)]
+#[cfg(feature = "1.10.2")]
 use hdf5_sys::h5f::H5F_libver_t;
-#[cfg(all(hdf5_1_10_0, h5_have_parallel))]
+#[cfg(all(feature = "1.10.0", feature = "have-parallel"))]
 use hdf5_sys::h5p::{
     H5Pget_all_coll_metadata_ops, H5Pget_coll_metadata_write, H5Pset_all_coll_metadata_ops,
     H5Pset_coll_metadata_write,
 };
-#[cfg(hdf5_1_8_13)]
+#[cfg(feature = "1.8.13")]
 use hdf5_sys::h5p::{H5Pget_core_write_tracking, H5Pset_core_write_tracking};
-#[cfg(hdf5_1_8_7)]
+#[cfg(feature = "1.8.7")]
 use hdf5_sys::h5p::{H5Pget_elink_file_cache_size, H5Pset_elink_file_cache_size};
-#[cfg(hdf5_1_10_1)]
+#[cfg(feature = "1.10.1")]
 use hdf5_sys::h5p::{
     H5Pget_evict_on_close, H5Pget_mdc_image_config, H5Pget_page_buffer_size, H5Pset_evict_on_close,
     H5Pset_mdc_image_config, H5Pset_page_buffer_size,
 };
-#[cfg(hdf5_1_10_2)]
+#[cfg(feature = "1.10.2")]
 use hdf5_sys::h5p::{H5Pget_libver_bounds, H5Pset_libver_bounds};
-#[cfg(hdf5_1_10_0)]
+#[cfg(feature = "1.10.0")]
 use hdf5_sys::h5p::{
     H5Pget_mdc_log_options, H5Pget_metadata_read_attempts, H5Pset_mdc_log_options,
     H5Pset_metadata_read_attempts,
 };
 
-#[cfg(h5_have_direct)]
+#[cfg(feature = "have-direct")]
 use crate::globals::H5FD_DIRECT;
 #[cfg(feature = "mpio")]
 use crate::globals::H5FD_MPIO;
@@ -109,32 +109,31 @@ impl ObjectClass for FileAccess {
 
 impl Debug for FileAccess {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let _e = silence_errors();
         let mut formatter = f.debug_struct("FileAccess");
         formatter.field("alignment", &self.alignment());
         formatter.field("chunk_cache", &self.chunk_cache());
         formatter.field("fclose_degree", &self.fclose_degree());
         formatter.field("gc_references", &self.gc_references());
         formatter.field("small_data_block_size", &self.small_data_block_size());
-        #[cfg(hdf5_1_10_2)]
+        #[cfg(feature = "1.10.2")]
         formatter.field("libver_bounds", &self.libver_bounds());
-        #[cfg(hdf5_1_8_7)]
+        #[cfg(feature = "1.8.7")]
         formatter.field("elink_file_cache_size", &self.elink_file_cache_size());
         formatter.field("meta_block_size", &self.meta_block_size());
-        #[cfg(hdf5_1_10_1)]
+        #[cfg(feature = "1.10.1")]
         formatter.field("page_buffer_size", &self.page_buffer_size());
-        #[cfg(hdf5_1_10_1)]
+        #[cfg(feature = "1.10.1")]
         formatter.field("evict_on_close", &self.evict_on_close());
-        #[cfg(hdf5_1_10_1)]
+        #[cfg(feature = "1.10.1")]
         formatter.field("mdc_image_config", &self.mdc_image_config());
         formatter.field("sieve_buf_size", &self.sieve_buf_size());
-        #[cfg(hdf5_1_10_0)]
+        #[cfg(feature = "1.10.0")]
         formatter.field("metadata_read_attempts", &self.metadata_read_attempts());
-        #[cfg(hdf5_1_10_0)]
+        #[cfg(feature = "1.10.0")]
         formatter.field("mdc_log_options", &self.mdc_log_options());
-        #[cfg(all(hdf5_1_10_0, h5_have_parallel))]
+        #[cfg(all(feature = "1.10.0", feature = "have-parallel"))]
         formatter.field("all_coll_metadata_ops", &self.all_coll_metadata_ops());
-        #[cfg(all(hdf5_1_10_0, h5_have_parallel))]
+        #[cfg(all(feature = "1.10.0", feature = "have-parallel"))]
         formatter.field("coll_metadata_write", &self.coll_metadata_write());
         formatter.field("mdc_config", &self.mdc_config());
         formatter.field("driver", &self.driver());
@@ -160,7 +159,7 @@ impl Eq for FileAccess {}
 
 impl Clone for FileAccess {
     fn clone(&self) -> Self {
-        unsafe { self.deref().clone().cast() }
+        unsafe { self.deref().clone().cast_unchecked() }
     }
 }
 
@@ -168,7 +167,7 @@ impl Clone for FileAccess {
 pub struct CoreDriver {
     pub increment: usize,
     pub filebacked: bool,
-    #[cfg(hdf5_1_8_13)]
+    #[cfg(feature = "1.8.13")]
     pub write_tracking: usize,
 }
 
@@ -177,7 +176,7 @@ impl Default for CoreDriver {
         Self {
             increment: 1024 * 1024,
             filebacked: false,
-            #[cfg(hdf5_1_8_13)]
+            #[cfg(feature = "1.8.13")]
             write_tracking: 0,
         }
     }
@@ -224,17 +223,17 @@ bitflags! {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+impl Default for LogFlags {
+    fn default() -> Self {
+        Self::LOC_IO
+    }
+}
+
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct LogOptions {
     logfile: Option<String>,
     flags: LogFlags,
     buf_size: usize,
-}
-
-impl Default for LogOptions {
-    fn default() -> Self {
-        Self { logfile: None, flags: LogFlags::LOC_IO, buf_size: 0 }
-    }
 }
 
 static FD_MEM_TYPES: &[H5F_mem_t] = &[
@@ -366,7 +365,7 @@ impl SplitDriver {
             mem_lheap: 0,
             mem_object: 0,
         };
-        if cfg!(hdf5_1_8_10) {
+        if cfg!(feature = "1.8.10") {
             layout.mem_gheap = 1; // was changed in 1.8.10
         }
         let is_split = drv.relax
@@ -452,7 +451,7 @@ mod mpio {
 #[cfg(feature = "mpio")]
 pub use self::mpio::*;
 
-#[cfg(h5_have_direct)]
+#[cfg(feature = "have-direct")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DirectDriver {
     pub alignment: usize,
@@ -460,7 +459,7 @@ pub struct DirectDriver {
     pub cbuf_size: usize,
 }
 
-#[cfg(h5_have_direct)]
+#[cfg(feature = "have-direct")]
 impl Default for DirectDriver {
     fn default() -> Self {
         Self { alignment: 4096, block_size: 4096, cbuf_size: 16 * 1024 * 1024 }
@@ -478,7 +477,7 @@ pub enum FileDriver {
     Split(SplitDriver),
     #[cfg(feature = "mpio")]
     Mpio(MpioDriver),
-    #[cfg(h5_have_direct)]
+    #[cfg(feature = "have-direct")]
     Direct(DirectDriver),
 }
 
@@ -507,13 +506,13 @@ impl From<H5F_close_degree_t> for FileCloseDegree {
     }
 }
 
-impl Into<H5F_close_degree_t> for FileCloseDegree {
-    fn into(self) -> H5F_close_degree_t {
-        match self {
-            Self::Weak => H5F_close_degree_t::H5F_CLOSE_WEAK,
-            Self::Semi => H5F_close_degree_t::H5F_CLOSE_SEMI,
-            Self::Strong => H5F_close_degree_t::H5F_CLOSE_STRONG,
-            Self::Default => H5F_close_degree_t::H5F_CLOSE_DEFAULT,
+impl From<FileCloseDegree> for H5F_close_degree_t {
+    fn from(v: FileCloseDegree) -> Self {
+        match v {
+            FileCloseDegree::Weak => Self::H5F_CLOSE_WEAK,
+            FileCloseDegree::Semi => Self::H5F_CLOSE_SEMI,
+            FileCloseDegree::Strong => Self::H5F_CLOSE_STRONG,
+            FileCloseDegree::Default => Self::H5F_CLOSE_DEFAULT,
         }
     }
 }
@@ -573,11 +572,11 @@ impl From<H5C_cache_incr_mode> for CacheIncreaseMode {
     }
 }
 
-impl Into<H5C_cache_incr_mode> for CacheIncreaseMode {
-    fn into(self) -> H5C_cache_incr_mode {
-        match self {
-            Self::Threshold => H5C_cache_incr_mode::H5C_incr__threshold,
-            Self::Off => H5C_cache_incr_mode::H5C_incr__off,
+impl From<CacheIncreaseMode> for H5C_cache_incr_mode {
+    fn from(v: CacheIncreaseMode) -> Self {
+        match v {
+            CacheIncreaseMode::Threshold => Self::H5C_incr__threshold,
+            CacheIncreaseMode::Off => Self::H5C_incr__off,
         }
     }
 }
@@ -597,11 +596,11 @@ impl From<H5C_cache_flash_incr_mode> for FlashIncreaseMode {
     }
 }
 
-impl Into<H5C_cache_flash_incr_mode> for FlashIncreaseMode {
-    fn into(self) -> H5C_cache_flash_incr_mode {
-        match self {
-            Self::AddSpace => H5C_cache_flash_incr_mode::H5C_flash_incr__add_space,
-            Self::Off => H5C_cache_flash_incr_mode::H5C_flash_incr__off,
+impl From<FlashIncreaseMode> for H5C_cache_flash_incr_mode {
+    fn from(v: FlashIncreaseMode) -> Self {
+        match v {
+            FlashIncreaseMode::AddSpace => Self::H5C_flash_incr__add_space,
+            FlashIncreaseMode::Off => Self::H5C_flash_incr__off,
         }
     }
 }
@@ -625,13 +624,13 @@ impl From<H5C_cache_decr_mode> for CacheDecreaseMode {
     }
 }
 
-impl Into<H5C_cache_decr_mode> for CacheDecreaseMode {
-    fn into(self) -> H5C_cache_decr_mode {
-        match self {
-            Self::Threshold => H5C_cache_decr_mode::H5C_decr__threshold,
-            Self::AgeOut => H5C_cache_decr_mode::H5C_decr__age_out,
-            Self::AgeOutWithThreshold => H5C_cache_decr_mode::H5C_decr__age_out_with_threshold,
-            Self::Off => H5C_cache_decr_mode::H5C_decr__off,
+impl From<CacheDecreaseMode> for H5C_cache_decr_mode {
+    fn from(v: CacheDecreaseMode) -> Self {
+        match v {
+            CacheDecreaseMode::Threshold => Self::H5C_decr__threshold,
+            CacheDecreaseMode::AgeOut => Self::H5C_decr__age_out,
+            CacheDecreaseMode::AgeOutWithThreshold => Self::H5C_decr__age_out_with_threshold,
+            CacheDecreaseMode::Off => Self::H5C_decr__off,
         }
     }
 }
@@ -657,11 +656,11 @@ impl From<c_int> for MetadataWriteStrategy {
     }
 }
 
-impl Into<c_int> for MetadataWriteStrategy {
-    fn into(self) -> c_int {
-        match self {
-            Self::Distributed => H5AC_METADATA_WRITE_STRATEGY__DISTRIBUTED,
-            Self::ProcessZeroOnly => H5AC_METADATA_WRITE_STRATEGY__PROCESS_0_ONLY,
+impl From<MetadataWriteStrategy> for c_int {
+    fn from(v: MetadataWriteStrategy) -> Self {
+        match v {
+            MetadataWriteStrategy::Distributed => H5AC_METADATA_WRITE_STRATEGY__DISTRIBUTED,
+            MetadataWriteStrategy::ProcessZeroOnly => H5AC_METADATA_WRITE_STRATEGY__PROCESS_0_ONLY,
         }
     }
 }
@@ -703,8 +702,8 @@ impl Eq for MetadataCacheConfig {}
 
 impl Default for MetadataCacheConfig {
     fn default() -> Self {
-        let min_clean_fraction = if cfg!(h5_have_parallel) { 0.3_f32 } else { 0.01_f32 };
-        let flash_multiple = if cfg!(h5_have_parallel) { 1.0_f32 } else { 1.4_f32 };
+        let min_clean_fraction = if cfg!(feature = "have-parallel") { 0.3_f32 } else { 0.01_f32 };
+        let flash_multiple = if cfg!(feature = "have-parallel") { 1.0_f32 } else { 1.4_f32 };
         Self {
             rpt_fcn_enabled: false,
             open_trace_file: false,
@@ -739,42 +738,42 @@ impl Default for MetadataCacheConfig {
     }
 }
 
-impl Into<H5AC_cache_config_t> for MetadataCacheConfig {
-    fn into(self) -> H5AC_cache_config_t {
+impl From<MetadataCacheConfig> for H5AC_cache_config_t {
+    fn from(v: MetadataCacheConfig) -> Self {
         const N: usize = H5AC__MAX_TRACE_FILE_NAME_LEN;
         let mut trace_file_name: [c_char; N + 1] = unsafe { mem::zeroed() };
-        string_to_fixed_bytes(&self.trace_file_name, &mut trace_file_name[..N]);
-        H5AC_cache_config_t {
+        string_to_fixed_bytes(&v.trace_file_name, &mut trace_file_name[..N]);
+        Self {
             version: H5AC__CURR_CACHE_CONFIG_VERSION,
-            rpt_fcn_enabled: self.rpt_fcn_enabled as _,
-            open_trace_file: self.open_trace_file as _,
-            close_trace_file: self.close_trace_file as _,
+            rpt_fcn_enabled: v.rpt_fcn_enabled as _,
+            open_trace_file: v.open_trace_file as _,
+            close_trace_file: v.close_trace_file as _,
             trace_file_name,
-            evictions_enabled: self.evictions_enabled as _,
-            set_initial_size: self.set_initial_size as _,
-            initial_size: self.initial_size as _,
-            min_clean_fraction: self.min_clean_fraction as _,
-            max_size: self.max_size as _,
-            min_size: self.min_size as _,
-            epoch_length: self.epoch_length as _,
-            incr_mode: self.incr_mode.into(),
-            lower_hr_threshold: self.lower_hr_threshold as _,
-            increment: self.increment as _,
-            apply_max_increment: self.apply_max_increment as _,
-            max_increment: self.max_increment as _,
-            flash_incr_mode: self.flash_incr_mode.into(),
-            flash_multiple: self.flash_multiple as _,
-            flash_threshold: self.flash_threshold as _,
-            decr_mode: self.decr_mode.into(),
-            upper_hr_threshold: self.upper_hr_threshold as _,
-            decrement: self.decrement as _,
-            apply_max_decrement: self.apply_max_decrement as _,
-            max_decrement: self.max_decrement as _,
-            epochs_before_eviction: self.epochs_before_eviction as _,
-            apply_empty_reserve: self.apply_empty_reserve as _,
-            empty_reserve: self.empty_reserve as _,
-            dirty_bytes_threshold: self.dirty_bytes_threshold as _,
-            metadata_write_strategy: self.metadata_write_strategy.into(),
+            evictions_enabled: v.evictions_enabled as _,
+            set_initial_size: v.set_initial_size as _,
+            initial_size: v.initial_size as _,
+            min_clean_fraction: v.min_clean_fraction as _,
+            max_size: v.max_size as _,
+            min_size: v.min_size as _,
+            epoch_length: v.epoch_length as _,
+            incr_mode: v.incr_mode.into(),
+            lower_hr_threshold: v.lower_hr_threshold as _,
+            increment: v.increment as _,
+            apply_max_increment: v.apply_max_increment as _,
+            max_increment: v.max_increment as _,
+            flash_incr_mode: v.flash_incr_mode.into(),
+            flash_multiple: v.flash_multiple as _,
+            flash_threshold: v.flash_threshold as _,
+            decr_mode: v.decr_mode.into(),
+            upper_hr_threshold: v.upper_hr_threshold as _,
+            decrement: v.decrement as _,
+            apply_max_decrement: v.apply_max_decrement as _,
+            max_decrement: v.max_decrement as _,
+            epochs_before_eviction: v.epochs_before_eviction as _,
+            apply_empty_reserve: v.apply_empty_reserve as _,
+            empty_reserve: v.empty_reserve as _,
+            dirty_bytes_threshold: v.dirty_bytes_threshold as _,
+            metadata_write_strategy: v.metadata_write_strategy.into(),
         }
     }
 }
@@ -817,7 +816,7 @@ impl From<H5AC_cache_config_t> for MetadataCacheConfig {
     }
 }
 
-#[cfg(hdf5_1_10_1)]
+#[cfg(feature = "1.10.1")]
 mod cache_image_config {
     use super::*;
 
@@ -838,13 +837,13 @@ mod cache_image_config {
         }
     }
 
-    impl Into<H5AC_cache_image_config_t> for CacheImageConfig {
-        fn into(self) -> H5AC_cache_image_config_t {
-            H5AC_cache_image_config_t {
+    impl From<CacheImageConfig> for H5AC_cache_image_config_t {
+        fn from(v: CacheImageConfig) -> Self {
+            Self {
                 version: H5AC__CURR_CACHE_CONFIG_VERSION,
-                generate_image: self.generate_image as _,
-                save_resize_status: self.save_resize_status as _,
-                entry_ageout: self.entry_ageout as _,
+                generate_image: v.generate_image as _,
+                save_resize_status: v.save_resize_status as _,
+                entry_ageout: v.entry_ageout as _,
             }
         }
     }
@@ -860,10 +859,10 @@ mod cache_image_config {
     }
 }
 
-#[cfg(hdf5_1_10_1)]
+#[cfg(feature = "1.10.1")]
 pub use self::cache_image_config::*;
 
-#[cfg(hdf5_1_10_0)]
+#[cfg(feature = "1.10.0")]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CacheLogOptions {
     pub is_enabled: bool,
@@ -871,14 +870,14 @@ pub struct CacheLogOptions {
     pub start_on_access: bool,
 }
 
-#[cfg(hdf5_1_10_0)]
+#[cfg(feature = "1.10.0")]
 impl Default for CacheLogOptions {
     fn default() -> Self {
         Self { is_enabled: false, location: "".into(), start_on_access: false }
     }
 }
 
-#[cfg(hdf5_1_10_2)]
+#[cfg(feature = "1.10.2")]
 mod libver {
     use super::*;
 
@@ -899,12 +898,12 @@ mod libver {
         }
     }
 
-    impl Into<H5F_libver_t> for LibraryVersion {
-        fn into(self) -> H5F_libver_t {
-            match self {
-                Self::V18 => H5F_libver_t::H5F_LIBVER_V18,
-                Self::V110 => H5F_libver_t::H5F_LIBVER_V110,
-                _ => H5F_libver_t::H5F_LIBVER_EARLIEST,
+    impl From<LibraryVersion> for H5F_libver_t {
+        fn from(v: LibraryVersion) -> Self {
+            match v {
+                LibraryVersion::V18 => Self::H5F_LIBVER_V18,
+                LibraryVersion::V110 => Self::H5F_LIBVER_V110,
+                LibraryVersion::Earliest => Self::H5F_LIBVER_EARLIEST,
             }
         }
     }
@@ -925,14 +924,26 @@ mod libver {
         pub high: LibraryVersion,
     }
 
+    impl LibVerBounds {
+        pub const fn new(low: LibraryVersion, high: LibraryVersion) -> Self {
+            Self { low, high }
+        }
+    }
+
     impl Default for LibVerBounds {
         fn default() -> Self {
             Self { low: LibraryVersion::Earliest, high: LibraryVersion::latest() }
         }
     }
+
+    impl From<LibraryVersion> for LibVerBounds {
+        fn from(version: LibraryVersion) -> Self {
+            Self { low: version, high: LibraryVersion::latest() }
+        }
+    }
 }
 
-#[cfg(hdf5_1_10_2)]
+#[cfg(feature = "1.10.2")]
 pub use self::libver::*;
 
 /// Builder used to create file access property list.
@@ -940,33 +951,33 @@ pub use self::libver::*;
 pub struct FileAccessBuilder {
     file_driver: Option<FileDriver>,
     log_options: LogOptions,
-    #[cfg(hdf5_1_8_13)]
+    #[cfg(feature = "1.8.13")]
     write_tracking: Option<usize>,
     fclose_degree: Option<FileCloseDegree>,
     alignment: Option<Alignment>,
     chunk_cache: Option<ChunkCache>,
-    #[cfg(hdf5_1_8_7)]
+    #[cfg(feature = "1.8.7")]
     elink_file_cache_size: Option<u32>,
     meta_block_size: Option<u64>,
-    #[cfg(hdf5_1_10_1)]
+    #[cfg(feature = "1.10.1")]
     page_buffer_size: Option<PageBufferSize>,
     sieve_buf_size: Option<usize>,
-    #[cfg(hdf5_1_10_1)]
+    #[cfg(feature = "1.10.1")]
     evict_on_close: Option<bool>,
-    #[cfg(hdf5_1_10_0)]
+    #[cfg(feature = "1.10.0")]
     metadata_read_attempts: Option<u32>,
     mdc_config: Option<MetadataCacheConfig>,
-    #[cfg(hdf5_1_10_1)]
+    #[cfg(feature = "1.10.1")]
     mdc_image_config: Option<CacheImageConfig>,
-    #[cfg(hdf5_1_10_0)]
+    #[cfg(feature = "1.10.0")]
     mdc_log_options: Option<CacheLogOptions>,
-    #[cfg(all(hdf5_1_10_0, h5_have_parallel))]
+    #[cfg(all(feature = "1.10.0", feature = "have-parallel"))]
     all_coll_metadata_ops: Option<bool>,
-    #[cfg(all(hdf5_1_10_0, h5_have_parallel))]
+    #[cfg(all(feature = "1.10.0", feature = "have-parallel"))]
     coll_metadata_write: Option<bool>,
     gc_references: Option<bool>,
     small_data_block_size: Option<u64>,
-    #[cfg(hdf5_1_10_2)]
+    #[cfg(feature = "1.10.2")]
     libver_bounds: Option<LibVerBounds>,
 }
 
@@ -988,17 +999,17 @@ impl FileAccessBuilder {
         builder.driver(&drv);
         builder.gc_references(plist.get_gc_references()?);
         builder.small_data_block_size(plist.get_small_data_block_size()?);
-        #[cfg(hdf5_1_10_2)]
+        #[cfg(feature = "1.10.2")]
         {
             let v = plist.get_libver_bounds()?;
             builder.libver_bounds(v.low, v.high);
         }
-        #[cfg(hdf5_1_8_7)]
+        #[cfg(feature = "1.8.7")]
         {
             builder.elink_file_cache_size(plist.get_elink_file_cache_size()?);
         }
         builder.meta_block_size(plist.get_meta_block_size()?);
-        #[cfg(hdf5_1_10_1)]
+        #[cfg(feature = "1.10.1")]
         {
             let v = plist.get_page_buffer_size()?;
             builder.page_buffer_size(v.buf_size, v.min_meta_perc, v.min_raw_perc);
@@ -1006,19 +1017,19 @@ impl FileAccessBuilder {
             builder.mdc_image_config(plist.get_mdc_image_config()?.generate_image);
         }
         builder.sieve_buf_size(plist.get_sieve_buf_size()?);
-        #[cfg(hdf5_1_10_0)]
+        #[cfg(feature = "1.10.0")]
         {
             builder.metadata_read_attempts(plist.get_metadata_read_attempts()?);
             let v = plist.get_mdc_log_options()?;
             builder.mdc_log_options(v.is_enabled, &v.location, v.start_on_access);
         }
-        #[cfg(all(hdf5_1_10_0, h5_have_parallel))]
+        #[cfg(all(feature = "1.10.0", feature = "have-parallel"))]
         {
             builder.all_coll_metadata_ops(plist.get_all_coll_metadata_ops()?);
             builder.coll_metadata_write(plist.get_coll_metadata_write()?);
         }
         builder.mdc_config(&plist.get_mdc_config()?);
-        #[cfg(hdf5_1_8_13)]
+        #[cfg(feature = "1.8.13")]
         {
             if let FileDriver::Core(ref drv) = drv {
                 builder.write_tracking(drv.write_tracking);
@@ -1027,6 +1038,11 @@ impl FileAccessBuilder {
         Ok(builder)
     }
 
+    /// Sets the file close degree
+    ///
+    /// If called with `FileCloseDegree::Strong`, the programmer is responsible
+    /// for closing all items before closing the file. Failure to do so might
+    /// invalidate newly created objects.
     pub fn fclose_degree(&mut self, fc_degree: FileCloseDegree) -> &mut Self {
         self.fclose_degree = Some(fc_degree);
         self
@@ -1042,7 +1058,7 @@ impl FileAccessBuilder {
         self
     }
 
-    #[cfg(hdf5_1_8_7)]
+    #[cfg(feature = "1.8.7")]
     pub fn elink_file_cache_size(&mut self, efc_size: u32) -> &mut Self {
         self.elink_file_cache_size = Some(efc_size);
         self
@@ -1053,7 +1069,7 @@ impl FileAccessBuilder {
         self
     }
 
-    #[cfg(hdf5_1_10_1)]
+    #[cfg(feature = "1.10.1")]
     pub fn page_buffer_size(
         &mut self, buf_size: usize, min_meta_perc: u32, min_raw_perc: u32,
     ) -> &mut Self {
@@ -1066,13 +1082,13 @@ impl FileAccessBuilder {
         self
     }
 
-    #[cfg(hdf5_1_10_1)]
+    #[cfg(feature = "1.10.1")]
     pub fn evict_on_close(&mut self, evict_on_close: bool) -> &mut Self {
         self.evict_on_close = Some(evict_on_close);
         self
     }
 
-    #[cfg(hdf5_1_10_0)]
+    #[cfg(feature = "1.10.0")]
     pub fn metadata_read_attempts(&mut self, attempts: u32) -> &mut Self {
         self.metadata_read_attempts = Some(attempts);
         self
@@ -1083,7 +1099,7 @@ impl FileAccessBuilder {
         self
     }
 
-    #[cfg(hdf5_1_10_1)]
+    #[cfg(feature = "1.10.1")]
     pub fn mdc_image_config(&mut self, generate_image: bool) -> &mut Self {
         self.mdc_image_config = Some(CacheImageConfig {
             generate_image,
@@ -1093,7 +1109,7 @@ impl FileAccessBuilder {
         self
     }
 
-    #[cfg(hdf5_1_10_0)]
+    #[cfg(feature = "1.10.0")]
     pub fn mdc_log_options(
         &mut self, is_enabled: bool, location: &str, start_on_access: bool,
     ) -> &mut Self {
@@ -1102,13 +1118,13 @@ impl FileAccessBuilder {
         self
     }
 
-    #[cfg(all(hdf5_1_10_0, h5_have_parallel))]
+    #[cfg(all(feature = "1.10.0", feature = "have-parallel"))]
     pub fn all_coll_metadata_ops(&mut self, is_collective: bool) -> &mut Self {
         self.all_coll_metadata_ops = Some(is_collective);
         self
     }
 
-    #[cfg(all(hdf5_1_10_0, h5_have_parallel))]
+    #[cfg(all(feature = "1.10.0", feature = "have-parallel"))]
     pub fn coll_metadata_write(&mut self, is_collective: bool) -> &mut Self {
         self.coll_metadata_write = Some(is_collective);
         self
@@ -1124,10 +1140,30 @@ impl FileAccessBuilder {
         self
     }
 
-    #[cfg(hdf5_1_10_2)]
+    #[cfg(feature = "1.10.2")]
     pub fn libver_bounds(&mut self, low: LibraryVersion, high: LibraryVersion) -> &mut Self {
         self.libver_bounds = Some(LibVerBounds { low, high });
         self
+    }
+
+    #[cfg(feature = "1.10.2")]
+    pub fn libver_earliest(&mut self) -> &mut Self {
+        self.libver_bounds(LibraryVersion::Earliest, LibraryVersion::latest())
+    }
+
+    #[cfg(feature = "1.10.2")]
+    pub fn libver_v18(&mut self) -> &mut Self {
+        self.libver_bounds(LibraryVersion::V18, LibraryVersion::latest())
+    }
+
+    #[cfg(feature = "1.10.2")]
+    pub fn libver_v110(&mut self) -> &mut Self {
+        self.libver_bounds(LibraryVersion::V110, LibraryVersion::latest())
+    }
+
+    #[cfg(feature = "1.10.2")]
+    pub fn libver_latest(&mut self) -> &mut Self {
+        self.libver_bounds(LibraryVersion::latest(), LibraryVersion::latest())
     }
 
     pub fn driver(&mut self, file_driver: &FileDriver) -> &mut Self {
@@ -1170,7 +1206,7 @@ impl FileAccessBuilder {
         self.driver(&FileDriver::Core(CoreDriver::default()))
     }
 
-    #[cfg(hdf5_1_8_13)]
+    #[cfg(feature = "1.8.13")]
     pub fn write_tracking(&mut self, page_size: usize) -> &mut Self {
         self.write_tracking = Some(page_size);
         self
@@ -1215,14 +1251,14 @@ impl FileAccessBuilder {
         self.driver(&FileDriver::Mpio(MpioDriver::try_new(comm, info).unwrap()))
     }
 
-    #[cfg(h5_have_direct)]
+    #[cfg(feature = "have-direct")]
     pub fn direct_options(
         &mut self, alignment: usize, block_size: usize, cbuf_size: usize,
     ) -> &mut Self {
         self.driver(&FileDriver::Direct(DirectDriver { alignment, block_size, cbuf_size }))
     }
 
-    #[cfg(h5_have_direct)]
+    #[cfg(feature = "have-direct")]
     pub fn direct(&mut self) -> &mut Self {
         self.driver(&FileDriver::Direct(DirectDriver::default()))
     }
@@ -1242,7 +1278,7 @@ impl FileAccessBuilder {
 
     fn set_core(&self, id: hid_t, drv: &CoreDriver) -> Result<()> {
         h5try!(H5Pset_fapl_core(id, drv.increment as _, drv.filebacked as _));
-        #[cfg(hdf5_1_8_13)]
+        #[cfg(feature = "1.8.13")]
         {
             if let Some(page_size) = self.write_tracking {
                 h5try!(H5Pset_core_write_tracking(id, (page_size > 0) as _, page_size.max(1) as _));
@@ -1324,7 +1360,7 @@ impl FileAccessBuilder {
         Ok(())
     }
 
-    #[cfg(h5_have_direct)]
+    #[cfg(feature = "have-direct")]
     fn set_direct(id: hid_t, drv: &DirectDriver) -> Result<()> {
         h5try!(H5Pset_fapl_direct(id, drv.alignment as _, drv.block_size as _, drv.cbuf_size as _));
         Ok(())
@@ -1357,7 +1393,7 @@ impl FileAccessBuilder {
             FileDriver::Mpio(drv) => {
                 Self::set_mpio(id, drv)?;
             }
-            #[cfg(h5_have_direct)]
+            #[cfg(feature = "have-direct")]
             FileDriver::Direct(drv) => {
                 Self::set_direct(id, drv)?;
             }
@@ -1375,6 +1411,8 @@ impl FileAccessBuilder {
         if let Some(v) = self.chunk_cache {
             h5try!(H5Pset_cache(id, 0, v.nslots as _, v.nbytes as _, v.w0 as _));
         }
+        // The default is to use CLOSE_SEMI or CLOSE_WEAK, depending on VFL driver.
+        // Both of these are unproblematic for our ownership
         if let Some(v) = self.fclose_degree {
             h5try!(H5Pset_fclose_degree(id, v.into()));
         }
@@ -1384,13 +1422,13 @@ impl FileAccessBuilder {
         if let Some(v) = self.small_data_block_size {
             h5try!(H5Pset_small_data_block_size(id, v as _));
         }
-        #[cfg(hdf5_1_10_2)]
+        #[cfg(feature = "1.10.2")]
         {
             if let Some(v) = self.libver_bounds {
                 h5try!(H5Pset_libver_bounds(id, v.low.into(), v.high.into()));
             }
         }
-        #[cfg(hdf5_1_8_7)]
+        #[cfg(feature = "1.8.7")]
         {
             if let Some(v) = self.elink_file_cache_size {
                 h5try!(H5Pset_elink_file_cache_size(id, v as _));
@@ -1399,7 +1437,7 @@ impl FileAccessBuilder {
         if let Some(v) = self.meta_block_size {
             h5try!(H5Pset_meta_block_size(id, v as _));
         }
-        #[cfg(hdf5_1_10_1)]
+        #[cfg(feature = "1.10.1")]
         {
             if let Some(v) = self.page_buffer_size {
                 h5try!(H5Pset_page_buffer_size(
@@ -1419,7 +1457,7 @@ impl FileAccessBuilder {
         if let Some(v) = self.sieve_buf_size {
             h5try!(H5Pset_sieve_buf_size(id, v as _));
         }
-        #[cfg(hdf5_1_10_0)]
+        #[cfg(feature = "1.10.0")]
         {
             if let Some(v) = self.metadata_read_attempts {
                 h5try!(H5Pset_metadata_read_attempts(id, v as _));
@@ -1434,7 +1472,7 @@ impl FileAccessBuilder {
                 ));
             }
         }
-        #[cfg(all(hdf5_1_10_0, h5_have_parallel))]
+        #[cfg(all(feature = "1.10.0", feature = "have-parallel"))]
         {
             if let Some(v) = self.all_coll_metadata_ops {
                 h5try!(H5Pset_all_coll_metadata_ops(id, v as _));
@@ -1449,11 +1487,14 @@ impl FileAccessBuilder {
         Ok(())
     }
 
+    pub fn apply(&self, plist: &mut FileAccess) -> Result<()> {
+        h5lock!(self.populate_plist(plist.id()))
+    }
+
     pub fn finish(&self) -> Result<FileAccess> {
         h5lock!({
-            let plist = FileAccess::try_new()?;
-            self.populate_plist(plist.id())?;
-            Ok(plist)
+            let mut plist = FileAccess::try_new()?;
+            self.apply(&mut plist).map(|_| plist)
         })
     }
 }
@@ -1465,7 +1506,7 @@ impl FileAccess {
     }
 
     pub fn copy(&self) -> Self {
-        unsafe { self.deref().copy().cast() }
+        unsafe { self.deref().copy().cast_unchecked() }
     }
 
     pub fn build() -> FileAccessBuilder {
@@ -1480,7 +1521,7 @@ impl FileAccess {
         h5try!(H5Pget_fapl_core(self.id(), &mut increment as *mut _, &mut filebacked as *mut _));
         drv.increment = increment as _;
         drv.filebacked = filebacked > 0;
-        #[cfg(hdf5_1_8_13)]
+        #[cfg(feature = "1.8.13")]
         {
             let mut is_enabled: hbool_t = 0;
             let mut page_size: size_t = 0;
@@ -1534,6 +1575,9 @@ impl FileAccess {
             }
             *layout.get_mut(i - 1) = 0xff - mapping[j];
         }
+        for &memb_name in &memb_name {
+            crate::util::h5_free_memory(memb_name as *mut _);
+        }
         let relax = relax > 0;
         let drv = MultiDriver { files, layout, relax };
         drv.validate().map(|_| drv)
@@ -1549,7 +1593,7 @@ impl FileAccess {
     }
 
     #[doc(hidden)]
-    #[cfg(h5_have_direct)]
+    #[cfg(feature = "have-direct")]
     fn get_direct(&self) -> Result<DirectDriver> {
         let res = h5get!(H5Pget_fapl_direct(self.id()): size_t, size_t, size_t)?;
         Ok(DirectDriver { alignment: res.0 as _, block_size: res.1 as _, cbuf_size: res.2 as _ })
@@ -1564,7 +1608,7 @@ impl FileAccess {
                 return self.get_mpio().map(FileDriver::Mpio);
             }
         }
-        #[cfg(h5_have_direct)]
+        #[cfg(feature = "have-direct")]
         {
             if drv_id == *H5FD_DIRECT {
                 return self.get_direct().map(FileDriver::Direct);
@@ -1628,13 +1672,13 @@ impl FileAccess {
         self.get_chunk_cache().unwrap_or_else(|_| ChunkCache::default())
     }
 
-    #[cfg(hdf5_1_8_7)]
+    #[cfg(feature = "1.8.7")]
     #[doc(hidden)]
     pub fn get_elink_file_cache_size(&self) -> Result<u32> {
         h5get!(H5Pget_elink_file_cache_size(self.id()): c_uint).map(|x| x as _)
     }
 
-    #[cfg(hdf5_1_8_7)]
+    #[cfg(feature = "1.8.7")]
     pub fn elink_file_cache_size(&self) -> u32 {
         self.get_elink_file_cache_size().unwrap_or(0)
     }
@@ -1648,7 +1692,7 @@ impl FileAccess {
         self.get_meta_block_size().unwrap_or(2048)
     }
 
-    #[cfg(hdf5_1_10_1)]
+    #[cfg(feature = "1.10.1")]
     #[doc(hidden)]
     pub fn get_page_buffer_size(&self) -> Result<PageBufferSize> {
         h5get!(H5Pget_page_buffer_size(self.id()): size_t, c_uint, c_uint).map(
@@ -1660,7 +1704,7 @@ impl FileAccess {
         )
     }
 
-    #[cfg(hdf5_1_10_1)]
+    #[cfg(feature = "1.10.1")]
     pub fn page_buffer_size(&self) -> PageBufferSize {
         self.get_page_buffer_size().unwrap_or_else(|_| PageBufferSize::default())
     }
@@ -1674,24 +1718,24 @@ impl FileAccess {
         self.get_sieve_buf_size().unwrap_or(64 * 1024)
     }
 
-    #[cfg(hdf5_1_10_1)]
+    #[cfg(feature = "1.10.1")]
     #[doc(hidden)]
     pub fn get_evict_on_close(&self) -> Result<bool> {
         h5get!(H5Pget_evict_on_close(self.id()): hbool_t).map(|x| x > 0)
     }
 
-    #[cfg(hdf5_1_10_1)]
+    #[cfg(feature = "1.10.1")]
     pub fn evict_on_close(&self) -> bool {
         self.get_evict_on_close().unwrap_or(false)
     }
 
-    #[cfg(hdf5_1_10_0)]
+    #[cfg(feature = "1.10.0")]
     #[doc(hidden)]
     pub fn get_metadata_read_attempts(&self) -> Result<u32> {
         h5get!(H5Pget_metadata_read_attempts(self.id()): c_uint).map(|x| x as _)
     }
 
-    #[cfg(hdf5_1_10_0)]
+    #[cfg(feature = "1.10.0")]
     pub fn metadata_read_attempts(&self) -> u32 {
         self.get_metadata_read_attempts().unwrap_or(1)
     }
@@ -1704,10 +1748,10 @@ impl FileAccess {
     }
 
     pub fn mdc_config(&self) -> MetadataCacheConfig {
-        self.get_mdc_config().ok().unwrap_or_else(MetadataCacheConfig::default)
+        self.get_mdc_config().ok().unwrap_or_default()
     }
 
-    #[cfg(hdf5_1_10_1)]
+    #[cfg(feature = "1.10.1")]
     #[doc(hidden)]
     pub fn get_mdc_image_config(&self) -> Result<CacheImageConfig> {
         let mut config: H5AC_cache_image_config_t = unsafe { mem::zeroed() };
@@ -1715,12 +1759,12 @@ impl FileAccess {
         h5call!(H5Pget_mdc_image_config(self.id(), &mut config)).map(|_| config.into())
     }
 
-    #[cfg(hdf5_1_10_1)]
+    #[cfg(feature = "1.10.1")]
     pub fn mdc_image_config(&self) -> CacheImageConfig {
-        self.get_mdc_image_config().ok().unwrap_or_else(CacheImageConfig::default)
+        self.get_mdc_image_config().ok().unwrap_or_default()
     }
 
-    #[cfg(hdf5_1_10_0)]
+    #[cfg(feature = "1.10.0")]
     #[doc(hidden)]
     pub fn get_mdc_log_options(&self) -> Result<CacheLogOptions> {
         let mut is_enabled: hbool_t = 0;
@@ -1748,29 +1792,29 @@ impl FileAccess {
         })
     }
 
-    #[cfg(hdf5_1_10_0)]
+    #[cfg(feature = "1.10.0")]
     pub fn mdc_log_options(&self) -> CacheLogOptions {
-        self.get_mdc_log_options().ok().unwrap_or_else(CacheLogOptions::default)
+        self.get_mdc_log_options().ok().unwrap_or_default()
     }
 
-    #[cfg(all(hdf5_1_10_0, h5_have_parallel))]
+    #[cfg(all(feature = "1.10.0", feature = "have-parallel"))]
     #[doc(hidden)]
     pub fn get_all_coll_metadata_ops(&self) -> Result<bool> {
         h5get!(H5Pget_all_coll_metadata_ops(self.id()): hbool_t).map(|x| x > 0)
     }
 
-    #[cfg(all(hdf5_1_10_0, h5_have_parallel))]
+    #[cfg(all(feature = "1.10.0", feature = "have-parallel"))]
     pub fn all_coll_metadata_ops(&self) -> bool {
         self.get_all_coll_metadata_ops().unwrap_or(false)
     }
 
-    #[cfg(all(hdf5_1_10_0, h5_have_parallel))]
+    #[cfg(all(feature = "1.10.0", feature = "have-parallel"))]
     #[doc(hidden)]
     pub fn get_coll_metadata_write(&self) -> Result<bool> {
         h5get!(H5Pget_coll_metadata_write(self.id()): hbool_t).map(|x| x > 0)
     }
 
-    #[cfg(all(hdf5_1_10_0, h5_have_parallel))]
+    #[cfg(all(feature = "1.10.0", feature = "have-parallel"))]
     pub fn coll_metadata_write(&self) -> bool {
         self.get_coll_metadata_write().unwrap_or(false)
     }
@@ -1793,15 +1837,20 @@ impl FileAccess {
         self.get_small_data_block_size().unwrap_or(2048)
     }
 
-    #[cfg(hdf5_1_10_2)]
+    #[cfg(feature = "1.10.2")]
     #[doc(hidden)]
     pub fn get_libver_bounds(&self) -> Result<LibVerBounds> {
         h5get!(H5Pget_libver_bounds(self.id()): H5F_libver_t, H5F_libver_t)
             .map(|(low, high)| LibVerBounds { low: low.into(), high: high.into() })
     }
 
-    #[cfg(hdf5_1_10_2)]
+    #[cfg(feature = "1.10.2")]
     pub fn libver_bounds(&self) -> LibVerBounds {
-        self.get_libver_bounds().ok().unwrap_or_else(LibVerBounds::default)
+        self.get_libver_bounds().ok().unwrap_or_default()
+    }
+
+    #[cfg(feature = "1.10.2")]
+    pub fn libver(&self) -> LibraryVersion {
+        self.get_libver_bounds().ok().unwrap_or_default().low
     }
 }

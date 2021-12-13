@@ -35,10 +35,7 @@ impl Version {
     }
 
     pub fn is_valid(self) -> bool {
-        self.major == 1
-            && ((self.minor == 8 && self.micro >= 4)
-                || (self.minor == 10)
-                || (self.minor == 12 && self.micro == 0))
+        self >= Version { major: 1, minor: 8, micro: 4 }
     }
 }
 
@@ -85,7 +82,7 @@ impl Display for RuntimeError {
 
 #[allow(non_snake_case, non_camel_case_types)]
 fn get_runtime_version_single<P: AsRef<Path>>(path: P) -> Result<Version, Box<dyn Error>> {
-    let lib = libloading::Library::new(path.as_ref())?;
+    let lib = unsafe { libloading::Library::new(path.as_ref()) }?;
 
     type H5open_t = unsafe extern "C" fn() -> c_int;
     let H5open = unsafe { lib.get::<H5open_t>(b"H5open")? };
@@ -94,7 +91,7 @@ fn get_runtime_version_single<P: AsRef<Path>>(path: P) -> Result<Version, Box<dy
     let H5get_libversion = unsafe { lib.get::<H5get_libversion_t>(b"H5get_libversion")? };
 
     let mut v: (c_uint, c_uint, c_uint) = (0, 0, 0);
-    unsafe {
+    let res = unsafe {
         if H5open() != 0 {
             Err("H5open()".into())
         } else if H5get_libversion(&mut v.0, &mut v.1, &mut v.2) != 0 {
@@ -102,7 +99,11 @@ fn get_runtime_version_single<P: AsRef<Path>>(path: P) -> Result<Version, Box<dy
         } else {
             Ok(Version::new(v.0 as _, v.1 as _, v.2 as _))
         }
-    }
+    };
+    // On macos libraries using TLS will corrupt TLS from rust. We delay closing
+    // the library until program exit by forgetting the library
+    std::mem::forget(lib);
+    res
 }
 
 fn validate_runtime_version(config: &Config) {
@@ -124,28 +125,26 @@ fn validate_runtime_version(config: &Config) {
     }
     for link_path in &link_paths {
         if let Ok(paths) = fs::read_dir(link_path) {
-            for path in paths {
-                if let Ok(path) = path {
-                    let path = path.path();
-                    if let Some(filename) = path.file_name() {
-                        let filename = filename.to_str().unwrap_or("");
-                        if path.is_file() && libfiles.contains(&filename) {
-                            println!("Attempting to load: {:?}", path);
-                            match get_runtime_version_single(&path) {
-                                Ok(version) => {
-                                    println!("    => runtime version = {:?}", version);
-                                    if version == config.header.version {
-                                        println!("HDF5 library runtime version matches headers.");
-                                        return;
-                                    }
-                                    panic!(
-                                        "Invalid HDF5 runtime version (expected: {:?}).",
-                                        config.header.version
-                                    );
+            for path in paths.flatten() {
+                let path = path.path();
+                if let Some(filename) = path.file_name() {
+                    let filename = filename.to_str().unwrap_or("");
+                    if path.is_file() && libfiles.contains(&filename) {
+                        println!("Attempting to load: {:?}", path);
+                        match get_runtime_version_single(&path) {
+                            Ok(version) => {
+                                println!("    => runtime version = {:?}", version);
+                                if version == config.header.version {
+                                    println!("HDF5 library runtime version matches headers.");
+                                    return;
                                 }
-                                Err(err) => {
-                                    println!("    => {}", err);
-                                }
+                                panic!(
+                                    "Invalid HDF5 runtime version (expected: {:?}).",
+                                    config.header.version
+                                );
+                            }
+                            Err(err) => {
+                                println!("    => {}", err);
                             }
                         }
                     }
@@ -614,26 +613,26 @@ impl Config {
         let version = self.header.version;
         assert!(version >= Version::new(1, 8, 4), "required HDF5 version: >=1.8.4");
         let mut vs: Vec<_> = (5..=21).map(|v| Version::new(1, 8, v)).collect(); // 1.8.[5-21]
-        vs.extend((0..=5).map(|v| Version::new(1, 10, v))); // 1.10.[0-5]
-        vs.push(Version::new(1, 12, 0)); // 1.12.0
+        vs.extend((0..=8).map(|v| Version::new(1, 10, v))); // 1.10.[0-8]
+        vs.extend((0..=1).map(|v| Version::new(1, 12, v))); // 1.12.[0-1]
         for v in vs.into_iter().filter(|&v| version >= v) {
-            println!("cargo:rustc-cfg=hdf5_{}_{}_{}", v.major, v.minor, v.micro);
+            println!("cargo:rustc-cfg=feature=\"{}.{}.{}\"", v.major, v.minor, v.micro);
             println!("cargo:version_{}_{}_{}=1", v.major, v.minor, v.micro);
         }
         if self.header.have_stdbool_h {
-            println!("cargo:rustc-cfg=h5_have_stdbool_h");
-            println!("cargo:have_stdbool=1");
+            println!("cargo:rustc-cfg=have_stdbool_h");
+            // there should be no need to export have_stdbool_h downstream
         }
         if self.header.have_direct {
-            println!("cargo:rustc-cfg=h5_have_direct");
+            println!("cargo:rustc-cfg=feature=\"have-direct\"");
             println!("cargo:have_direct=1");
         }
         if self.header.have_parallel {
-            println!("cargo:rustc-cfg=h5_have_parallel");
+            println!("cargo:rustc-cfg=feature=\"have-parallel\"");
             println!("cargo:have_parallel=1");
         }
         if self.header.have_threadsafe {
-            println!("cargo:rustc-cfg=h5_have_threadsafe");
+            println!("cargo:rustc-cfg=feature=\"have-threadsafe\"");
             println!("cargo:have_threadsafe=1");
         }
     }

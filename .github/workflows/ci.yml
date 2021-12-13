@@ -37,6 +37,18 @@ jobs:
           command: ${{matrix.command}}
           args: "${{matrix.command == 'fmt' && '--all -- --check' || '-- -D warnings'}}"
 
+  doc: # This task should mirror the procedure on docs.rs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+        with: {submodules: true}
+      - name: Install Rust (${{matrix.rust}})
+        uses: actions-rs/toolchain@v1
+        with: {toolchain: nightly, profile: minimal, override: true}
+      - name: Document workspace
+        run: env RUSTDOCFLAGS="--cfg docsrs" cargo doc --features hdf5-sys/static,hdf5-sys/zlib,blosc,lzf
+
   brew:
     name: brew
     runs-on: macos-latest
@@ -82,9 +94,11 @@ jobs:
           - {os: macos, version: 1.10.5, mpi: openmpi, channel: conda-forge, rust: beta}
           - {os: ubuntu, version: 1.10.6, channel: anaconda, rust: stable}
           - {os: ubuntu, version: 1.10.6, mpi: mpich, channel: conda-forge, rust: nightly}
+          # - {os: ubuntu, version: 1.10.8, channel: conda-forge, rust: stable}
           - {os: ubuntu, version: 1.12.0, mpi: openmpi, channel: conda-forge, rust: stable}
           - {os: macos, version: 1.12.0, channel: conda-forge, rust: stable}
           - {os: windows, version: 1.12.0, channel: conda-forge, rust: stable}
+          - {os: ubuntu, version: 1.12.1, channel: conda-forge, rust: stable}
     defaults:
       run:
         shell: bash -l {0}
@@ -126,14 +140,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v2
         with: {submodules: true}
-      - name: Change to older toolchain
-        if: matrix.os == 'macos'
-        run: sudo xcode-select -s "/Applications/Xcode_11.7.app"
       - name: Install Rust (${{matrix.rust}})
         uses: actions-rs/toolchain@v1
         with: {toolchain: '${{matrix.rust}}', profile: minimal, override: true}
       - name: Build and test all crates
         run: cargo test --workspace -v --features hdf5-sys/static,hdf5-sys/zlib --exclude hdf5-derive
+      - name: Build and test with filters
+        run: cargo test --workspace -v --features hdf5-sys/static,hdf5-sys/zlib,lzf,blosc --exclude hdf5-derive
+        if: matrix.rust != 'stable-gnu'
+      - name: Run examples
+        run: |
+          cargo r --example simple --features hdf5-sys/static,hdf5-sys/zlib,lzf,blosc
+          cargo r --example chunking --features hdf5-sys/static,hdf5-sys/zlib,lzf,blosc
+        if: matrix.rust != 'stable-gnu'
 
   apt:
     name: apt
@@ -142,7 +161,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {ubuntu: 16.04, mpi: serial, rust: nightly}
           - {ubuntu: 18.04, mpi: mpich, rust: beta}
           - {ubuntu: 20.04, mpi: openmpi, rust: stable}
     steps:
@@ -162,9 +180,12 @@ jobs:
         run: |
           [ "${{matrix.mpi}}" != "serial" ] && FEATURES=mpio
           cargo test -vv --features="$FEATURES"
-      - name: Test const generics
-        if: matrix.rust == 'nightly'
-        run: cargo test -p hdf5-types --features hdf5-types/const_generics
+      - name: Test crate for locking on synchronisation
+        run: |
+          [ "${{matrix.mpi}}" != "serial" ] && FEATURES=mpio
+          cargo test -vv --features="$FEATURES" -- lock_part
+          cargo test -vv --features="$FEATURES" -- lock_part
+          cargo test -vv --features="$FEATURES" -- lock_part
 
   msi:
     name: msi
@@ -209,6 +230,22 @@ jobs:
       - name: Build and test all crates
         run: cargo test -vv
 
+  msrv:
+    name: Minimal Supported Rust Version
+    runs-on: ubuntu-18.04
+    strategy:
+      fail-fast: false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+        with: {submodules: true}
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with: {toolchain: 1.51, profile: minimal, override: true}
+      - name: Build and test all crates
+        run:
+          cargo test --workspace -vv --features=hdf5-sys/static --exclude=hdf5-derive
+
   wine:
     name: wine
     runs-on: ubuntu-latest
@@ -220,6 +257,18 @@ jobs:
         uses: actions-rs/toolchain@v1
         with: {toolchain: stable, target: x86_64-pc-windows-gnu, profile: minimal, override: true}
       - name: Install dependencies
-        run: sudo apt-get install wine64 mingw-w64
+        run: sudo apt-get update && sudo apt install wine64 mingw-w64
       - name: Build and test
         run: env CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUNNER=wine64 cargo test --features hdf5-sys/static --target x86_64-pc-windows-gnu -- --skip test_compile_fail
+  addr_san:
+    name: Address sanitizer
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+        with: {submodules: true}
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with: {toolchain: nightly, profile: minimal, override: true}
+      - name: Run test with sanitizer
+        run: env RUSTFLAGS="-Z sanitizer=address" cargo test --features hdf5-sys/static --target x86_64-unknown-linux-gnu --workspace --exclude hdf5-derive

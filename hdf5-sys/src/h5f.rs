@@ -1,15 +1,26 @@
+//! Creating and manipulating HDF5 files
 use std::mem;
 
 pub use self::H5F_close_degree_t::*;
 pub use self::H5F_libver_t::*;
 pub use self::H5F_mem_t::*;
 pub use self::H5F_scope_t::*;
+#[cfg(not(feature = "1.10.0"))]
+pub use {
+    H5F_info1_t as H5F_info_t, H5F_info1_t__sohm as H5F_info_t__sohm, H5Fget_info1 as H5Fget_info,
+};
+#[cfg(feature = "1.10.0")]
+pub use {
+    H5F_info2_t as H5F_info_t, H5F_info2_t__free as H5F_info_t__free,
+    H5F_info2_t__sohm as H5F_info_t__sohm, H5F_info2_t__super as H5F_info_t__super,
+    H5Fget_info2 as H5Fget_info,
+};
 
 use crate::internal_prelude::*;
 
 use crate::h5ac::H5AC_cache_config_t;
 
-#[cfg_attr(hdf5_1_10_0, deprecated(note = "deprecated in HDF5 1.10.0"))]
+#[cfg_attr(feature = "1.10.0", deprecated(note = "deprecated in HDF5 1.10.0"))]
 pub const H5F_ACC_DEBUG: c_uint = 0x0000;
 
 /* these flags call H5check() in the C library */
@@ -57,29 +68,29 @@ impl Default for H5F_close_degree_t {
     }
 }
 
-#[cfg_attr(hdf5_1_10_0, deprecated(note = "deprecated in HDF5 1.10.0, use H5F_info2_t"))]
+#[cfg_attr(feature = "1.10.0", deprecated(note = "deprecated in HDF5 1.10.0, use H5F_info2_t"))]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct H5F_info_t {
+pub struct H5F_info1_t {
     pub super_ext_size: hsize_t,
-    pub sohm: H5F_info_t__sohm,
+    pub sohm: H5F_info1_t__sohm,
 }
 
-impl Default for H5F_info_t {
+impl Default for H5F_info1_t {
     fn default() -> Self {
         unsafe { mem::zeroed() }
     }
 }
 
-#[cfg_attr(hdf5_1_10_0, deprecated(note = "deprecated in HDF5 1.10.0, use H5F_info2_t"))]
+#[cfg_attr(feature = "1.10.0", deprecated(note = "deprecated in HDF5 1.10.0, use H5F_info2_t"))]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct H5F_info_t__sohm {
+pub struct H5F_info1_t__sohm {
     pub hdr_size: hsize_t,
     pub msgs_info: H5_ih_info_t,
 }
 
-impl Default for H5F_info_t__sohm {
+impl Default for H5F_info1_t__sohm {
     fn default() -> Self {
         unsafe { mem::zeroed() }
     }
@@ -99,7 +110,7 @@ pub enum H5F_mem_t {
     H5FD_MEM_NTYPES = 7,
 }
 
-#[cfg(not(hdf5_1_10_2))]
+#[cfg(not(feature = "1.10.2"))]
 #[repr(C)]
 #[derive(Copy, Clone, PartialEq, PartialOrd, Debug)]
 pub enum H5F_libver_t {
@@ -107,7 +118,7 @@ pub enum H5F_libver_t {
     H5F_LIBVER_LATEST = 1,
 }
 
-#[cfg(hdf5_1_10_2)]
+#[cfg(feature = "1.10.2")]
 #[repr(C)]
 #[derive(Copy, Clone, PartialEq, PartialOrd, Debug)]
 pub enum H5F_libver_t {
@@ -118,18 +129,13 @@ pub enum H5F_libver_t {
     H5F_LIBVER_NBOUNDS = 3,
 }
 
-#[cfg(hdf5_1_10_2)]
+#[cfg(feature = "1.10.2")]
 pub const H5F_LIBVER_LATEST: H5F_libver_t = H5F_LIBVER_V110;
 
 impl Default for H5F_libver_t {
     fn default() -> Self {
         H5F_LIBVER_LATEST
     }
-}
-
-#[cfg(not(hdf5_1_10_0))]
-extern "C" {
-    pub fn H5Fget_info(obj_id: hid_t, bh_info: *mut H5F_info_t) -> herr_t;
 }
 
 extern "C" {
@@ -139,7 +145,7 @@ extern "C" {
     )]
     pub fn H5Fset_latest_format(file_id: hid_t, latest_format: hbool_t) -> herr_t;
     pub fn H5Fis_hdf5(filename: *const c_char) -> htri_t;
-    #[cfg(hdf5_1_12_0)]
+    #[cfg(feature = "1.12.0")]
     pub fn H5Fis_accessible(container_name: *const c_char, fapl_id: hid_t) -> htri_t;
     pub fn H5Fcreate(
         filename: *const c_char, flags: c_uint, create_plist: hid_t, access_plist: hid_t,
@@ -148,12 +154,12 @@ extern "C" {
     pub fn H5Freopen(file_id: hid_t) -> hid_t;
     pub fn H5Fflush(object_id: hid_t, scope: H5F_scope_t) -> herr_t;
     pub fn H5Fclose(file_id: hid_t) -> herr_t;
-    #[cfg(hdf5_1_12_0)]
+    #[cfg(feature = "1.12.0")]
     pub fn H5Fdelete(filename: *const c_char, fapl_id: hid_t) -> herr_t;
     pub fn H5Fget_create_plist(file_id: hid_t) -> hid_t;
     pub fn H5Fget_access_plist(file_id: hid_t) -> hid_t;
     pub fn H5Fget_intent(file_id: hid_t, intent: *mut c_uint) -> herr_t;
-    #[cfg(hdf5_1_12_0)]
+    #[cfg(feature = "1.12.0")]
     pub fn H5Fget_fileno(file_id: hid_t, fileno: *mut c_ulong) -> herr_t;
     pub fn H5Fget_obj_count(file_id: hid_t, types: c_uint) -> ssize_t;
     pub fn H5Fget_obj_ids(
@@ -175,23 +181,23 @@ extern "C" {
     pub fn H5Fget_name(obj_id: hid_t, name: *mut c_char, size: size_t) -> ssize_t;
 }
 
-#[cfg(hdf5_1_8_7)]
+#[cfg(feature = "1.8.7")]
 extern "C" {
     pub fn H5Fclear_elink_file_cache(file_id: hid_t) -> herr_t;
 }
 
-#[cfg(hdf5_1_8_9)]
+#[cfg(feature = "1.8.9")]
 extern "C" {
     pub fn H5Fget_file_image(file_id: hid_t, buf_ptr: *mut c_void, buf_len: size_t) -> ssize_t;
 }
 
-#[cfg(all(hdf5_1_8_9, h5_have_parallel))]
+#[cfg(all(feature = "1.8.9", feature = "have-parallel"))]
 extern "C" {
     pub fn H5Fset_mpi_atomicity(file_id: hid_t, flag: hbool_t) -> herr_t;
     pub fn H5Fget_mpi_atomicity(file_id: hid_t, flag: *mut hbool_t) -> herr_t;
 }
 
-#[cfg(hdf5_1_10_0)]
+#[cfg(feature = "1.10.0")]
 mod hdf5_1_10_0 {
     use super::*;
 
@@ -308,20 +314,22 @@ mod hdf5_1_10_0 {
         ) -> ssize_t;
         pub fn H5Fformat_convert(fid: hid_t) -> herr_t;
         pub fn H5Fget_info2(obj_id: hid_t, finfo: *mut H5F_info2_t) -> herr_t;
-        #[deprecated(note = "deprecated in HDF5 1.10.0, use H5Fget_info2")]
-        pub fn H5Fget_info1(obj_id: hid_t, finfo: *mut H5F_info1_t) -> herr_t;
     }
-
-    pub use super::{
-        H5F_info_t as H5F_info1_t, H5F_info_t__sohm as H5F_info1_t__sohm,
-        H5Fget_info1 as H5Fget_info,
-    };
 }
 
-#[cfg(hdf5_1_10_0)]
+extern "C" {
+    #[cfg_attr(
+        feature = "1.10.0",
+        deprecated(note = "deprecated in HDF5 1.10.0, use H5Fget_info2")
+    )]
+    #[cfg_attr(not(feature = "1.10.0"), link_name = "H5Fget_info")]
+    pub fn H5Fget_info1(obj_id: hid_t, finfo: *mut H5F_info1_t) -> herr_t;
+}
+
+#[cfg(feature = "1.10.0")]
 pub use self::hdf5_1_10_0::*;
 
-#[cfg(hdf5_1_10_1)]
+#[cfg(feature = "1.10.1")]
 mod hdf5_1_10_1 {
     use super::*;
 
@@ -355,10 +363,10 @@ mod hdf5_1_10_1 {
     }
 }
 
-#[cfg(hdf5_1_10_1)]
+#[cfg(feature = "1.10.1")]
 pub use self::hdf5_1_10_1::*;
 
-#[cfg(hdf5_1_10_5)]
+#[cfg(feature = "1.10.5")]
 extern "C" {
     pub fn H5Fget_dset_no_attrs_hint(file_id: hid_t, minimize: *mut hbool_t) -> herr_t;
     pub fn H5Fset_dset_no_attrs_hint(file_id: hid_t, minimize: hbool_t) -> herr_t;
